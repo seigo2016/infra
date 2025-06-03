@@ -1,0 +1,143 @@
+- name: Obtain kubeadm join command from Control Plane
+  hosts: k8s-master
+  gather_facts: no
+  remote_user: debian
+  become: yes
+
+  tasks:
+    - name: Read join command from /home/debian/kubeadm-join.sh
+      ansible.builtin.shell: |
+        cat /home/debian/kubeadm-join.sh
+      register: join_command_raw
+      args:
+        executable: /bin/bash
+
+    - name: Save join command into host var for later use
+      ansible.builtin.set_fact:
+        kubeadm_join_cmd: "{{ join_command_raw.stdout }}"
+      run_once: true
+
+- name: Setup Kubernetes Worker Nodes and join cluster
+  hosts: k8s-workers-1
+  remote_user: debian
+  become: yes
+
+  vars:
+    join_command: "{{ hostvars[ groups['k8s-master'][0] ]['kubeadm_join_cmd'] }}"
+
+  tasks:
+    - name: Create /etc/modules-load.d/k8s.conf for Kubernetes prerequisites
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Load required kernel modules immediately
+      ansible.builtin.shell: |
+        modprobe overlay
+        modprobe br_netfilter
+      args:
+        executable: /bin/bash
+
+    - name: Write Kubernetes sysctl parameters to /etc/sysctl.d/k8s.conf
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/k8s.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables  = 1
+          net.ipv4.ip_forward                 = 1
+          net.ipv4.ip_nonlocal_bind           = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Reload sysctl settings
+      ansible.builtin.command:
+        cmd: sysctl --system
+
+    - name: Install base packages for Kubernetes
+      ansible.builtin.apt:
+        name:
+          - wget
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+          - git
+          - software-properties-common
+        state: present
+        update_cache: yes
+
+    - name: Configure CRI-O repository
+      ansible.builtin.shell: |
+        set -eux
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.32/deb/Release.key \
+          | gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.32/deb /" \
+          > /etc/apt/sources.list.d/cri-o.list
+        apt-get update
+      args:
+        executable: /bin/bash
+
+    - name: Install CRI-O
+      ansible.builtin.apt:
+        name: cri-o
+        state: present
+        update_cache: yes
+
+    - name: Enable and start CRI-O service
+      ansible.builtin.service:
+        name: crio
+        enabled: yes
+        state: started
+
+    - name: Configure Kubernetes apt repository
+      ansible.builtin.shell: |
+        set -eux
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key \
+          | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /" \
+          > /etc/apt/sources.list.d/kubernetes.list
+        apt-get update
+      args:
+        executable: /bin/bash
+
+    - name: Install kubelet, kubeadm, kubectl
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: yes
+
+    - name: Configure kubelet to use CRI-O socket
+      ansible.builtin.copy:
+        dest: /etc/default/kubelet
+        content: |
+          KUBELET_EXTRA_ARGS=--cgroup-driver=systemd --container-runtime-endpoint='unix:///var/run/crio/crio.sock'
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Disable swap
+      ansible.builtin.command:
+        cmd: swapoff -a
+
+    - name: Join the Kubernetes cluster
+      ansible.builtin.shell: |
+        {{ join_command }}
+      args:
+        executable: /bin/bash
+
+    - name: Enable and start kubelet service
+      ansible.builtin.service:
+        name: kubelet
+        enabled: yes
+        state: started
