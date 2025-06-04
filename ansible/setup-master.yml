@@ -1,0 +1,210 @@
+---
+- name: Initialize Kubernetes environment
+  hosts: k8s-master
+  remote_user: debian
+  become: yes
+
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  vars:
+    MASTER_IP: "{{ lookup('env','K8S_MASTER_IP') }}"
+    kubeadm_config: |
+      apiVersion: kubeadm.k8s.io/v1beta4
+      kind: ClusterConfiguration
+      clusterName: seed
+      controlPlaneEndpoint: {{ MASTER_IP }}:6443
+      networking:
+        podSubnet: "10.244.0.0/16"
+      ---
+      apiVersion: kubeadm.k8s.io/v1beta4
+      kind: InitConfiguration
+      nodeRegistration:
+        criSocket: "unix:///var/run/crio/crio.sock"
+      ---
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      failSwapOn: false
+      featureGates:
+        NodeSwap: true
+      memorySwap:
+        swapBehavior: LimitedSwap
+
+  tasks:
+    - name: Load kernel modules for Kubernetes
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Ensure kernel modules are loaded
+      ansible.builtin.shell: "modprobe {{ item }}"
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Configure kernel parameters
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/k8s.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables  = 1
+          net.ipv4.ip_forward = 1
+          net.ipv4.ip_nonlocal_bind = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+
+    - name: Apply kernel parameters
+      ansible.builtin.command:
+        cmd: sysctl --system
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - wget
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+          - git
+          - software-properties-common
+        state: present
+        update_cache: yes
+
+    - name: Configure CRI-O repository
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.32/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.32/deb /" > /etc/apt/sources.list.d/cri-o.list
+      args:
+        executable: /bin/bash
+
+    - name: Install CRI-O
+      ansible.builtin.apt:
+        name: cri-o
+        state: present
+        update_cache: yes
+
+    - name: Enable and start CRI-O service
+      ansible.builtin.service:
+        name: crio
+        enabled: yes
+        state: started
+
+    - name: Configure Kubernetes repository
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+      args:
+        executable: /bin/bash
+
+    - name: Install Kubernetes components
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: yes
+
+    - name: Ensure CRI-O uses systemd cgroup manager
+      ansible.builtin.copy:
+        dest: /etc/crio/crio.conf.d/02-cgroup-manager.conf
+        content: |
+          [crio.runtime]
+          cgroup_manager = "systemd"
+      notify:
+        - Restart CRI-O
+
+    - name: Configure kubelet
+      ansible.builtin.copy:
+        dest: /etc/default/kubelet
+        content: |
+          KUBELET_EXTRA_ARGS=--cgroup-driver=systemd --container-runtime-endpoint='unix:///var/run/crio/crio.sock'
+
+    - name: Disable swap
+      ansible.builtin.command:
+        cmd: swapoff -a
+
+    - name: Write kubeadm configuration
+      ansible.builtin.copy:
+        dest: kubeadm-config.yaml
+        content: "{{ kubeadm_config }}"
+
+    - name: Initialize Kubernetes cluster
+      ansible.builtin.command:
+        cmd: kubeadm init --config kubeadm-config.yaml
+
+    - name: Configure kubeconfig
+      ansible.builtin.shell: |
+        mkdir -p /home/debian/.kube/
+        cp -i /etc/kubernetes/admin.conf /home/debian/.kube/config
+        chown $(id -u):$(id -g) /home/debian/.kube/config
+      args:
+        executable: /bin/bash
+
+    - name: Install Helm
+      ansible.builtin.shell: |
+        curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | tee /usr/share/keyrings/helm.gpg > /dev/null
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+        apt update && apt install helm -y
+      args:
+        executable: /bin/bash
+
+    - name: Wait for Kubernetes API server to be reachable
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 6443
+        timeout: 120
+        state: started
+
+    - name: Wait until kubectl can list nodes
+      ansible.builtin.shell: |
+        until kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes; do
+          sleep 5
+        done
+      args:
+        executable: /bin/bash
+
+    - name: Wait until Node PodCIDR is assigned
+      ansible.builtin.shell: |
+        until kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes -o jsonpath='{.items[0].spec.podCIDR}' | grep -q '[0-9]'; do
+          sleep 5
+        done
+      args:
+        executable: /bin/bash
+
+    - name: Install Flannel using official YAML
+      ansible.builtin.shell: |
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+      args:
+        executable: /bin/bash
+  
+    - name: Setup control plane
+      ansible.builtin.shell: |
+        nodename=`echo $(hostname) | tr '[:upper:]' '[:lower:]'`
+        kubectl taint node $nodename node-role.kubernetes.io/control-plane:NoSchedule-
+      args:
+        executable: /bin/bash
+
+    - name: Generate kubeadm join command
+      shell: |
+        JOIN_COMMAND=$(kubeadm token create --print-join-command)
+        CERT_KEY=$(kubeadm init phase upload-certs --upload-certs | tail -n 1)
+        echo "${JOIN_COMMAND} --certificate-key ${CERT_KEY} --cri-socket unix:///var/run/crio/crio.sock --control-plane"
+      register: join_command
+
+    - name: Copy kubeadm join command to local machine
+      ansible.builtin.copy:
+        content: "{{ join_command.stdout }}"
+        dest: kubeadm-join.sh
+        mode: 'u+x'
+
+    - name: Install FluxCD
+      ansible.builtin.shell: |
+        curl -s https://fluxcd.io/install.sh | bash
+      args:
+        executable: /bin/bash
+
+  handlers:
+    - name: Restart CRI-O
+      service:
+        name: crio
+        state: restarted
