@@ -105,7 +105,7 @@
         update_cache: yes
 
     - name: Ensure CRI-O uses systemd cgroup manager
-      copy:
+      ansible.builtin.copy:
         dest: /etc/crio/crio.conf.d/02-cgroup-manager.conf
         content: |
           [crio.runtime]
@@ -127,10 +127,6 @@
       ansible.builtin.copy:
         dest: kubeadm-config.yaml
         content: "{{ kubeadm_config }}"
-
-    - name: pause
-      ansible.builtin.pause:
-        prompt: "Press Enter to continue"
 
     - name: Initialize Kubernetes cluster
       ansible.builtin.command:
