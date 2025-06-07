@@ -23,6 +23,10 @@ spec:
         namespace: flux-system
   values:
     controller:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       service:
-        type: NodePort
-
+        type: ClusterIP
+      hostPorts:
+        http:  80
+        https: 443
