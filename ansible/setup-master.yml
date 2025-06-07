@@ -7,7 +7,7 @@
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   vars:
-    MASTER_IP: "{{ lookup('env','K8S_MASTER_IP') }}"
+    MASTER_IP: "{{ lookup('env','TF_VAR_master_ip') }}"
     kubeadm_config: |
       apiVersion: kubeadm.k8s.io/v1beta4
       kind: ClusterConfiguration
