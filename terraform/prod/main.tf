@@ -1,16 +1,12 @@
-# Production environment configuration
-
-module "proxmox_provider" {
-  source = "../modules/proxmox"
-
-  api_url          = var.api_url
-  cf_client_id     = var.cf_client_id
-  cf_client_secret = var.cf_client_secret
-  api_token_id     = var.api_token_id
-  api_token_secret = var.api_token_secret
-  debug_enabled    = false # Less verbose in production
-  logging_enabled  = true
-  log_file         = "prod-proxmox.log"
+# Proxmox provider configuration
+provider "proxmox" {
+  pm_api_url          = var.api_url
+  pm_http_headers     = "CF-Access-Client-Id,${var.cf_client_id},CF-Access-Client-Secret,${var.cf_client_secret}"
+  pm_debug            = false # Less verbose in production
+  pm_log_enable       = true
+  pm_log_file         = "prod-proxmox.log"
+  pm_api_token_id     = var.api_token_id
+  pm_api_token_secret = var.api_token_secret
 }
 
 # Create Kubernetes cluster VMs
