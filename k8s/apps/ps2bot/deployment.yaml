@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: ps2bot
-        image: ghcr.io/seigo2016/ps2bot:latest
+        image: ghcr.io/seigo2016/ps2bot:latest # {"$imagepolicy": "flux-system:ps2bot"}
         env:
         - name: DISCORD_TOKEN
           valueFrom:

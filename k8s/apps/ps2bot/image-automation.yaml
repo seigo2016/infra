@@ -1,0 +1,64 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: ps2bot
+  namespace: flux-system
+spec:
+  image: ghcr.io/seigo2016/ps2bot
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: ps2bot
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: ps2bot
+  policy:
+    semver:
+      range: ">=1.0.0"
+  filterTags:
+    pattern: '^main-[a-fA-F0-9]+-(?P<ts>.*)'
+    extract: '$ts'
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: ps2bot
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      messageTemplate: |
+        Automated image update
+        
+        Automation name: {{ .AutomationObject }}
+        
+        Files:
+        {{ range $filename, $_ := .Updated.Files -}}
+        - {{ $filename }}
+        {{ end -}}
+        
+        Objects:
+        {{ range $resource, $_ := .Updated.Objects -}}
+        - {{ $resource.Kind }} {{ $resource.Name }}
+        {{ end -}}
+        
+        Images:
+        {{ range .Updated.Images -}}
+        - {{.}}
+        {{ end -}}
+  update:
+    strategy: Setters
+    path: "./k8s"
