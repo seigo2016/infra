@@ -21,7 +21,13 @@ spec:
         volumeMounts:
         - mountPath: /usr/share/nginx/html
           name: nginx-storage
+        - name: nginx-index
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
       volumes:
       - name: nginx-storage
         persistentVolumeClaim:
           claimName: nginx-pvc
+      - name: nginx-index
+        configMap:
+          name: nginx-index
