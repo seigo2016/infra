@@ -6,4 +6,4 @@ resources:
   - ./sample-nginx
   - ./vault
   - ./external-secrets
-  # - ./ps2bot
+  - ./ps2bot
