@@ -15,12 +15,16 @@ metadata:
 spec:
   install:
     createNamespace: true
+    crds: Create
   interval: 10m
+  targetNamespace: external-secrets-system
   chart:
     spec:
       chart: external-secrets
       sourceRef:
         kind: HelmRepository
         name: external-secrets
-  crds:
-    install: Create
+  values:
+    createSecretStore: true
+    webhook:
+      port: 9443
