@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ps2bot-deployment
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ps2bot
+  template:
+    metadata:
+      labels:
+        app: ps2bot
+    spec:
+      containers:
+      - name: ps2bot
+        image: ghcr.io/seigo2016/ps2bot:latest
+        env:
+        - name: DISCORD_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: ps2bot-secrets
+              key: discord-token
