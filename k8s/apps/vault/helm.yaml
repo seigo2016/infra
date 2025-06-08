@@ -13,6 +13,8 @@ metadata:
   name: vault
   namespace: default
 spec:
+  install:
+    createNamespace: true
   targetNamespace: vault
   interval: 10m
   chart:
