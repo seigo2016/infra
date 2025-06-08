@@ -4,3 +4,5 @@ resources:
   - ./longhorn
   - ./ingress-nginx
   - ./sample-nginx
+  - ./vault
+  - ./external-secrets
