@@ -1,0 +1,47 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImageRepository
+metadata:
+  name: release-bot
+  namespace: flux-system
+spec:
+  image: ghcr.io/ps2-localization-jp/release-bot
+  interval: 5m
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImagePolicy
+metadata:
+  name: release-bot
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: release-bot
+  policy:
+    semver:
+      range: ">=1.0.0"
+  filterTags:
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImageUpdateAutomation
+metadata:
+  name: release-bot
+  namespace: flux-system
+spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: flux@example.com
+        name: flux
+      messageTemplate: "chore: update release-bot image to {{range .Updated.Images}}{{println .}}{{end}}"
+    push:
+      branch: main
+  update:
+    path: "./k8s/apps/release-bot"
+    strategy: Setters

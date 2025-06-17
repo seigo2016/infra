@@ -6,9 +6,10 @@ metadata:
   name: flux-system
   namespace: flux-system
 spec:
-  interval: 1m0s
+  interval: 10m0s
   ref:
     branch: main
+  timeout: 60s
   secretRef:
     name: flux-system
   url: https://github.com/seigo2016/infra.git
@@ -22,6 +23,9 @@ spec:
   interval: 10m0s
   path: ./k8s/flux
   prune: true
+  wait: true
+  timeout: 5m0s
+  retryInterval: 1m0s
   sourceRef:
     kind: GitRepository
     name: flux-system

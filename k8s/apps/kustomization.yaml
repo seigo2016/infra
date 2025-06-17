@@ -7,3 +7,4 @@ resources:
   - ./vault
   - ./external-secrets
   - ./ps2bot
+  - ./release-bot

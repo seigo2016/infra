@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service-account.yaml
+  - secret-store.yaml
+  - external-secret.yaml
+  - docker-registry-secret.yaml
+  - image-automation.yaml

@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   image: ghcr.io/seigo2016/ps2bot
-  interval: 1m
+  interval: 10m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
@@ -59,6 +59,8 @@ spec:
         {{ range .Updated.Images -}}
         - {{.}}
         {{ end -}}
+    push:
+      branch: main
   update:
     strategy: Setters
     path: "./k8s"

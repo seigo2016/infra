@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: release-bot-deployment
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: release-bot
+  template:
+    metadata:
+      labels:
+        app: release-bot
+    spec:
+      imagePullSecrets:
+      - name: ghcr-registry-secret
+      containers:
+      - name: release-bot
+        image: ghcr.io/ps2-localization-jp/release-bot:latest # {"$imagepolicy": "flux-system:release-bot"}
+        env:
+        - name: token
+          valueFrom:
+            secretKeyRef:
+              name: release-bot-secrets
+              key: discord-token
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: release-bot-secrets
+              key: github-token-workflow
+        - name: GITHUB_OWNER
+          valueFrom:
+            secretKeyRef:
+              name: release-bot-secrets
+              key: github-owner
+        - name: GITHUB_REPO
+          valueFrom:
+            secretKeyRef:
+              name: release-bot-secrets
+              key: github-repo
+        - name: WORKFLOW_FILE
+          valueFrom:
+            secretKeyRef:
+              name: release-bot-secrets
+              key: workflow-file
