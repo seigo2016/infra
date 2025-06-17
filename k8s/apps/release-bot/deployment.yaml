@@ -19,7 +19,7 @@ spec:
       - name: release-bot
         image: ghcr.io/ps2-localization-jp/release-bot:latest # {"$imagepolicy": "flux-system:release-bot"}
         env:
-        - name: token
+        - name: DISCORD_TOKEN
           valueFrom:
             secretKeyRef:
               name: release-bot-secrets
