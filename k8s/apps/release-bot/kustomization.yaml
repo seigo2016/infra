@@ -6,3 +6,4 @@ resources:
   - external-secret.yaml
   - docker-registry-secret.yaml
   - image-automation.yaml
+  - secret-store.yaml
