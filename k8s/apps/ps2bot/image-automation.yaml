@@ -14,7 +14,7 @@ metadata:
   namespace: flux-system
 spec:
   imageRepositoryRef:
-    name: release-bot
+    name: ps2bot
   policy:
     alphabetical:
       order: asc
