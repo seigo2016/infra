@@ -14,13 +14,12 @@ metadata:
   namespace: flux-system
 spec:
   imageRepositoryRef:
-    name: ps2bot
+    name: release-bot
   policy:
-    semver:
-      range: ">=1.0.0"
+    alphabetical:
+      order: asc
   filterTags:
-    pattern: '^main-[a-fA-F0-9]+-(?P<ts>.*)'
-    extract: '$ts'
+    pattern: '^(main|latest)$'
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageUpdateAutomation
