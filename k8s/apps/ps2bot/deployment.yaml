@@ -13,6 +13,8 @@ spec:
       labels:
         app: ps2bot
     spec:
+      imagePullSecrets:
+      - name: ghcr-registry-secret-ps2bot
       containers:
       - name: ps2bot
         image: ghcr.io/seigo2016/ps2bot:latest # {"$imagepolicy": "flux-system:ps2bot"}

@@ -5,4 +5,5 @@ resources:
   - service-account.yaml
   - secret-store.yaml
   - external-secret.yaml
+  - docker-registry-secret.yaml
   - image-automation.yaml
