@@ -16,6 +16,7 @@ spec:
   imageRepositoryRef:
     name: ps2bot
   digestReflectionPolicy: Always
+  interval: 10m
   policy:
     alphabetical:
       order: asc
