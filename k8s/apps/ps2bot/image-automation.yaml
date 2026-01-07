@@ -15,6 +15,7 @@ metadata:
 spec:
   imageRepositoryRef:
     name: ps2bot
+  digestReflectionPolicy: Always
   policy:
     alphabetical:
       order: asc
