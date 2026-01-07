@@ -30,3 +30,5 @@ spec:
       hostPorts:
         http:  80
         https: 443
+      updateStrategy:
+        type: Recreate
