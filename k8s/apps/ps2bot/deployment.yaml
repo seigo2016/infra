@@ -17,7 +17,7 @@ spec:
       - name: ghcr-registry-secret-ps2bot
       containers:
       - name: ps2bot
-        image: ghcr.io/seigo2016/ps2bot:latest@sha256:e6aa76b2740dedbb61bdd3e802e685482d8eef9dbad2a4b2bd6cc198966353c2 # {"$imagepolicy": "flux-system:ps2bot"}
+        image: ghcr.io/seigo2016/ps2bot:latest@sha256:d327de7a81c195b851b5bc714f749a51480da0cf7b3e566c18725e9c6b56a031 # {"$imagepolicy": "flux-system:ps2bot"}
         env:
         - name: token
           valueFrom:
