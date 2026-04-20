@@ -15,13 +15,8 @@
     hermes_git_repo: https://github.com/NousResearch/hermes-agent.git
     hermes_git_version: main
     hermes_python_version: "3.11"
-    uv_bin: "{{ hermes_home }}/.local/bin/uv"
-    # Provide via --extra-vars or (future) ansible-vault.
-    # TODO: migrate secrets to ansible-vault or SOPS for multi-user ops.
-    openrouter_api_key: ""
-    anthropic_api_key: ""
-    openai_api_key: ""
-    elevenlabs_api_key: ""
+    uv_install_dir: "{{ hermes_home }}/.local/bin"
+    uv_bin: "{{ uv_install_dir }}/uv"
 
   tasks:
     - name: Install base packages
@@ -29,10 +24,13 @@
         name:
           - python3
           - python3-venv
+          - python3-dev
           - git
           - curl
           - ca-certificates
           - build-essential
+          - libssl-dev
+          - libffi-dev
         state: present
         update_cache: yes
 
@@ -70,12 +68,15 @@
       become_user: "{{ hermes_user }}"
       environment:
         HOME: "{{ hermes_home }}"
+        UV_INSTALL_DIR: "{{ uv_install_dir }}"
+        UV_UNMANAGED_INSTALL: "{{ uv_install_dir }}"
 
     - name: Clone hermes-agent source
       ansible.builtin.git:
         repo: "{{ hermes_git_repo }}"
         dest: "{{ hermes_app_dir }}"
         version: "{{ hermes_git_version }}"
+        # TODO: set update: no once pinned to a release tag / SHA
       become_user: "{{ hermes_user }}"
 
     - name: Create virtualenv with Python 3.11 via uv
@@ -87,11 +88,11 @@
       environment:
         HOME: "{{ hermes_home }}"
 
-    - name: Install hermes-agent into virtualenv
-      ansible.builtin.command: "{{ uv_bin }} pip install -e .[all]"
+    - name: Sync dependencies from uv.lock (upstream preferred)
+      ansible.builtin.command: "{{ uv_bin }} sync --all-extras --locked"
       args:
         chdir: "{{ hermes_app_dir }}"
-        creates: "{{ hermes_venv_dir }}/bin/hermes"
+        creates: "{{ hermes_venv_dir }}/bin/hermes-agent"
       become_user: "{{ hermes_user }}"
       environment:
         HOME: "{{ hermes_home }}"
@@ -105,18 +106,23 @@
         group: "{{ hermes_user }}"
         mode: "0750"
 
-    - name: Deploy environment file
+    - name: Check if env file already exists
+      ansible.builtin.stat:
+        path: "{{ hermes_env_file }}"
+      register: hermes_env_stat
+
+    - name: Seed env file from upstream .env.example (only if missing)
       ansible.builtin.copy:
+        src: "{{ hermes_app_dir }}/.env.example"
         dest: "{{ hermes_env_file }}"
+        remote_src: yes
         owner: "{{ hermes_user }}"
         group: "{{ hermes_user }}"
         mode: "0600"
-        content: |
-          OPENROUTER_API_KEY={{ openrouter_api_key }}
-          ANTHROPIC_API_KEY={{ anthropic_api_key }}
-          OPENAI_API_KEY={{ openai_api_key }}
-          ELEVENLABS_API_KEY={{ elevenlabs_api_key }}
-      notify: Restart hermes-agent
+        force: no
+      when: not hermes_env_stat.stat.exists
+      # TODO: migrate secrets to ansible-vault or SOPS for multi-user ops.
+      # Operators populate keys with `hermes setup` / `hermes config set` or by editing this file.
 
     - name: Install hermes-agent systemd unit
       ansible.builtin.copy:
@@ -133,13 +139,16 @@
           User={{ hermes_user }}
           Group={{ hermes_user }}
           WorkingDirectory={{ hermes_app_dir }}
+          Environment=HOME={{ hermes_home }}
           EnvironmentFile={{ hermes_env_file }}
-          ExecStart={{ hermes_venv_dir }}/bin/hermes run
+          ExecStart={{ hermes_venv_dir }}/bin/hermes-agent
           Restart=on-failure
           RestartSec=10
+          StartLimitIntervalSec=120
+          StartLimitBurst=5
           NoNewPrivileges=true
           ProtectSystem=strict
-          ProtectHome=true
+          ProtectHome=tmpfs
           PrivateTmp=true
           ReadWritePaths={{ hermes_home }}
 
@@ -148,7 +157,7 @@
       notify: Restart hermes-agent
 
     - name: Enable and start hermes-agent
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: hermes-agent
         daemon_reload: yes
         enabled: yes
@@ -162,7 +171,7 @@
 
   handlers:
     - name: Restart hermes-agent
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: hermes-agent
         daemon_reload: yes
         state: restarted
