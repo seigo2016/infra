@@ -22,3 +22,4 @@ hermes-agent:
       ansible_host: "{{ lookup('env','TF_VAR_hermes_agent_ip') }}"
       ansible_user: debian
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519_k8s
+      ansible_ssh_common_args: "-o ProxyJump=ss -o StrictHostKeyChecking=accept-new"

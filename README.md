@@ -37,9 +37,18 @@ export TF_VAR_gateway="192.168.1.1"
 ### Hermes Agent プロビジョニング
 
 `ansible/setup-hermes.yml` は NousResearch/hermes-agent を標準 VM に導入する。
-API キーは環境変数ではなく `--extra-vars` で渡す（ansible-vault 化は将来 TODO）。
+playbook は VM 上の `/etc/hermes-agent/.env` に upstream の `.env.example` をシード
+（既存ファイルは上書きしない）するのみで、API キーの埋め込みは行わない。
+デプロイ後に運用者が SSH で `.env` を編集するか、VM 内で `hermes setup` / `hermes config set`
+を使って設定し、`sudo systemctl restart hermes-agent` する。
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/setup-hermes.yml \
-  --extra-vars "openrouter_api_key=XXX anthropic_api_key=YYY openai_api_key=ZZZ elevenlabs_api_key=WWW"
+# 1. VM を作成（terraform apply 済み前提）
+ansible-playbook -i ansible/inventory.yml ansible/setup-hermes.yml
+
+# 2. API キーを投入して再起動
+ssh -J ss debian@"$TF_VAR_hermes_agent_ip" \
+  'sudo -u hermes editor /etc/hermes-agent/.env && sudo systemctl restart hermes-agent'
 ```
+
+ansible-vault / SOPS での秘密管理化は TODO。

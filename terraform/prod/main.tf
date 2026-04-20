@@ -28,7 +28,7 @@ module "kubernetes_cluster" {
   # VM spec
   master_name    = "k8s-master"
   master_cores   = 4
-  master_memory  = 8192
+  master_memory  = 16384
   worker_name_prefix = "k8s-worker"
   worker_cores   = 4
   worker_memory  = 8192

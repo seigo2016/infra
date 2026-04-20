@@ -31,6 +31,7 @@
           - build-essential
           - libssl-dev
           - libffi-dev
+          - acl
         state: present
         update_cache: yes
 
@@ -88,8 +89,11 @@
       environment:
         HOME: "{{ hermes_home }}"
 
-    - name: Sync dependencies from uv.lock (upstream preferred)
-      ansible.builtin.command: "{{ uv_bin }} sync --all-extras --locked"
+    # Mirror upstream scripts/install.sh: try full extras, fall back to base install.
+    # `uv pip install -e ".[all]"` is used instead of `uv sync` because upstream does
+    # not maintain uv.lock in lockstep with pyproject.toml (verified on main @ 2026-04).
+    - name: Install hermes-agent with all extras
+      ansible.builtin.command: '{{ uv_bin }} pip install -e ".[all]"'
       args:
         chdir: "{{ hermes_app_dir }}"
         creates: "{{ hermes_venv_dir }}/bin/hermes-agent"
@@ -97,6 +101,22 @@
       environment:
         HOME: "{{ hermes_home }}"
         VIRTUAL_ENV: "{{ hermes_venv_dir }}"
+      register: hermes_install_all
+      failed_when:
+        - hermes_install_all.rc != 0
+        - '"Could not find a version that satisfies" not in hermes_install_all.stderr'
+        - '"No matching distribution" not in hermes_install_all.stderr'
+        - '"Failed to build" not in hermes_install_all.stderr'
+
+    - name: Fallback - install hermes-agent base only if extras failed
+      ansible.builtin.command: '{{ uv_bin }} pip install -e "."'
+      args:
+        chdir: "{{ hermes_app_dir }}"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+        VIRTUAL_ENV: "{{ hermes_venv_dir }}"
+      when: hermes_install_all.rc is defined and hermes_install_all.rc != 0
 
     - name: Ensure env directory exists
       ansible.builtin.file:
@@ -133,6 +153,8 @@
           Description=Hermes Agent (NousResearch)
           After=network-online.target
           Wants=network-online.target
+          StartLimitIntervalSec=120
+          StartLimitBurst=5
 
           [Service]
           Type=simple
@@ -144,8 +166,6 @@
           ExecStart={{ hermes_venv_dir }}/bin/hermes-agent
           Restart=on-failure
           RestartSec=10
-          StartLimitIntervalSec=120
-          StartLimitBurst=5
           NoNewPrivileges=true
           ProtectSystem=strict
           ProtectHome=tmpfs
