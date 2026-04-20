@@ -1,0 +1,168 @@
+---
+- name: Provision Hermes Agent on standalone VM
+  hosts: hermes-agent
+  remote_user: debian
+  become: yes
+
+  vars:
+    hermes_user: hermes
+    hermes_home: /opt/hermes-agent
+    hermes_app_dir: "{{ hermes_home }}/app"
+    hermes_venv_dir: "{{ hermes_app_dir }}/venv"
+    hermes_env_dir: /etc/hermes-agent
+    hermes_env_file: "{{ hermes_env_dir }}/.env"
+    # TODO: pin to a specific tag or SHA once upstream cuts releases
+    hermes_git_repo: https://github.com/NousResearch/hermes-agent.git
+    hermes_git_version: main
+    hermes_python_version: "3.11"
+    uv_bin: "{{ hermes_home }}/.local/bin/uv"
+    # Provide via --extra-vars or (future) ansible-vault.
+    # TODO: migrate secrets to ansible-vault or SOPS for multi-user ops.
+    openrouter_api_key: ""
+    anthropic_api_key: ""
+    openai_api_key: ""
+    elevenlabs_api_key: ""
+
+  tasks:
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-venv
+          - git
+          - curl
+          - ca-certificates
+          - build-essential
+        state: present
+        update_cache: yes
+
+    - name: Check python3 version
+      ansible.builtin.command: python3 --version
+      register: python_version_check
+      changed_when: false
+
+    - name: Assert python3 is 3.11 (required by hermes-agent upstream)
+      ansible.builtin.assert:
+        that:
+          - python_version_check.stdout is match('^Python 3\\.11(\\.|$)')
+        fail_msg: "Expected Python 3.11 (upstream install.sh hardcodes 3.11), got: {{ python_version_check.stdout }}"
+
+    - name: Create hermes service user
+      ansible.builtin.user:
+        name: "{{ hermes_user }}"
+        home: "{{ hermes_home }}"
+        shell: /bin/bash
+        system: yes
+        create_home: yes
+
+    - name: Download uv installer
+      ansible.builtin.get_url:
+        url: https://astral.sh/uv/install.sh
+        dest: /tmp/uv-install.sh
+        mode: "0700"
+        owner: "{{ hermes_user }}"
+        group: "{{ hermes_user }}"
+
+    - name: Install uv under hermes user
+      ansible.builtin.command: /bin/sh /tmp/uv-install.sh
+      args:
+        creates: "{{ uv_bin }}"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+
+    - name: Clone hermes-agent source
+      ansible.builtin.git:
+        repo: "{{ hermes_git_repo }}"
+        dest: "{{ hermes_app_dir }}"
+        version: "{{ hermes_git_version }}"
+      become_user: "{{ hermes_user }}"
+
+    - name: Create virtualenv with Python 3.11 via uv
+      ansible.builtin.command: "{{ uv_bin }} venv venv --python {{ hermes_python_version }}"
+      args:
+        chdir: "{{ hermes_app_dir }}"
+        creates: "{{ hermes_venv_dir }}/bin/python"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+
+    - name: Install hermes-agent into virtualenv
+      ansible.builtin.command: "{{ uv_bin }} pip install -e .[all]"
+      args:
+        chdir: "{{ hermes_app_dir }}"
+        creates: "{{ hermes_venv_dir }}/bin/hermes"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+        VIRTUAL_ENV: "{{ hermes_venv_dir }}"
+
+    - name: Ensure env directory exists
+      ansible.builtin.file:
+        path: "{{ hermes_env_dir }}"
+        state: directory
+        owner: "{{ hermes_user }}"
+        group: "{{ hermes_user }}"
+        mode: "0750"
+
+    - name: Deploy environment file
+      ansible.builtin.copy:
+        dest: "{{ hermes_env_file }}"
+        owner: "{{ hermes_user }}"
+        group: "{{ hermes_user }}"
+        mode: "0600"
+        content: |
+          OPENROUTER_API_KEY={{ openrouter_api_key }}
+          ANTHROPIC_API_KEY={{ anthropic_api_key }}
+          OPENAI_API_KEY={{ openai_api_key }}
+          ELEVENLABS_API_KEY={{ elevenlabs_api_key }}
+      notify: Restart hermes-agent
+
+    - name: Install hermes-agent systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/hermes-agent.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Hermes Agent (NousResearch)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User={{ hermes_user }}
+          Group={{ hermes_user }}
+          WorkingDirectory={{ hermes_app_dir }}
+          EnvironmentFile={{ hermes_env_file }}
+          ExecStart={{ hermes_venv_dir }}/bin/hermes run
+          Restart=on-failure
+          RestartSec=10
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=true
+          PrivateTmp=true
+          ReadWritePaths={{ hermes_home }}
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart hermes-agent
+
+    - name: Enable and start hermes-agent
+      ansible.builtin.systemd:
+        name: hermes-agent
+        daemon_reload: yes
+        enabled: yes
+        state: started
+
+    - name: Verify hermes-agent is active
+      ansible.builtin.command: systemctl is-active hermes-agent
+      register: hermes_active
+      changed_when: false
+      failed_when: hermes_active.stdout != "active"
+
+  handlers:
+    - name: Restart hermes-agent
+      ansible.builtin.systemd:
+        name: hermes-agent
+        daemon_reload: yes
+        state: restarted

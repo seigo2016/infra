@@ -29,6 +29,17 @@ export TF_VAR_api_token_secret="your-proxmox-api-token-secret"
 ```bash
 export TF_VAR_master_ip="192.168.1.100"
 export TF_VAR_worker_ips='["192.168.1.101", "192.168.1.102", "192.168.1.103"]'
+export TF_VAR_hermes_agent_ip="192.168.1.110"
 export TF_VAR_network_prefix="24"
 export TF_VAR_gateway="192.168.1.1"
+```
+
+### Hermes Agent プロビジョニング
+
+`ansible/setup-hermes.yml` は NousResearch/hermes-agent を標準 VM に導入する。
+API キーは環境変数ではなく `--extra-vars` で渡す（ansible-vault 化は将来 TODO）。
+
+```bash
+ansible-playbook -i ansible/inventory.yml ansible/setup-hermes.yml \
+  --extra-vars "openrouter_api_key=XXX anthropic_api_key=YYY openai_api_key=ZZZ elevenlabs_api_key=WWW"
 ```

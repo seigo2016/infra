@@ -15,3 +15,10 @@ k8s-workers:
       ansible_host:  "{{ (lookup('env','TF_VAR_worker_ips') | from_json)[1] }}"
       ansible_user: debian
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519_k8s
+
+hermes-agent:
+  hosts:
+    hermes-agent:
+      ansible_host: "{{ lookup('env','TF_VAR_hermes_agent_ip') }}"
+      ansible_user: debian
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519_k8s
