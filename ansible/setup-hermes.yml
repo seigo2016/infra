@@ -18,9 +18,11 @@
     uv_install_dir: "{{ hermes_home }}/.local/bin"
     uv_bin: "{{ uv_install_dir }}/uv"
     system_timezone: Asia/Tokyo
-    # Set to true to let the hermes service user control the Docker daemon.
-    # WARNING: docker group membership is effectively root on the host.
-    hermes_docker_access: false
+    # Grants the hermes service user access to the Docker daemon so the
+    # upstream Docker tool backend can run containers for agent sessions.
+    # WARNING: docker group membership is effectively root on the host; the
+    # blast radius of a compromised hermes process is the whole VM.
+    hermes_docker_access: true
 
   tasks:
     # ----- OS baseline (timezone / NTP / auto security updates / Docker) -----
