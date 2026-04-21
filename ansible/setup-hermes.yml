@@ -17,8 +17,88 @@
     hermes_python_version: "3.11"
     uv_install_dir: "{{ hermes_home }}/.local/bin"
     uv_bin: "{{ uv_install_dir }}/uv"
+    system_timezone: Asia/Tokyo
+    # Set to true to let the hermes service user control the Docker daemon.
+    # WARNING: docker group membership is effectively root on the host.
+    hermes_docker_access: false
 
   tasks:
+    # ----- OS baseline (timezone / NTP / auto security updates / Docker) -----
+    - name: Read current timezone
+      ansible.builtin.command: timedatectl show -p Timezone --value
+      register: current_timezone
+      changed_when: false
+
+    - name: Set system timezone
+      ansible.builtin.command: "timedatectl set-timezone {{ system_timezone }}"
+      when: current_timezone.stdout != system_timezone
+
+    - name: Ensure systemd-timesyncd (NTP) is enabled and running
+      ansible.builtin.systemd_service:
+        name: systemd-timesyncd
+        enabled: yes
+        state: started
+
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+        update_cache: yes
+
+    - name: Enable automatic package list refresh and security upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+      notify: Reload unattended-upgrades
+
+    - name: Ensure /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker official GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        force: no
+
+    - name: Add Docker apt repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/docker.list
+        mode: "0644"
+        content: |
+          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+      notify: Refresh apt cache
+
+    - name: Flush apt cache refresh before installing Docker
+      ansible.builtin.meta: flush_handlers
+
+    - name: Install Docker Engine and Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker daemon is enabled and running
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: yes
+        state: started
+
+    # ----- Hermes-specific packages -----
     - name: Install base packages
       ansible.builtin.apt:
         name:
@@ -46,13 +126,20 @@
           - python_version_check.stdout is match('^Python 3\\.11(\\.|$)')
         fail_msg: "Expected Python 3.11 (upstream install.sh hardcodes 3.11), got: {{ python_version_check.stdout }}"
 
-    - name: Create hermes service user
+    - name: Create hermes service user (system account, no interactive shell)
       ansible.builtin.user:
         name: "{{ hermes_user }}"
         home: "{{ hermes_home }}"
-        shell: /bin/bash
+        shell: /usr/sbin/nologin
         system: yes
         create_home: yes
+
+    - name: Grant hermes access to Docker socket (opt-in)
+      ansible.builtin.user:
+        name: "{{ hermes_user }}"
+        groups: docker
+        append: yes
+      when: hermes_docker_access | bool
 
     - name: Download uv installer
       ansible.builtin.get_url:
@@ -195,3 +282,12 @@
         name: hermes-agent
         daemon_reload: yes
         state: restarted
+
+    - name: Reload unattended-upgrades
+      ansible.builtin.systemd_service:
+        name: unattended-upgrades
+        state: restarted
+
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: yes
