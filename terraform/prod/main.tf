@@ -47,4 +47,9 @@ module "hermes_agent" {
   ip_address     = var.hermes_agent_ip
   network_prefix = var.network_prefix
   gateway        = var.gateway
+
+  # VM spec (override module defaults for prod workload)
+  cores     = 8
+  memory    = 16384
+  disk_size = "64G"
 }
