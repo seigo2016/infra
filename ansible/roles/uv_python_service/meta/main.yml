@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: uv_python_service
+  author: seigo
+  description: >
+    Deploy a uv-managed Python application as a systemd service with hardening
+    baked in. Used for MCP servers and similar long-lived Python daemons on the
+    hermes-agent VM.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+
+dependencies: []

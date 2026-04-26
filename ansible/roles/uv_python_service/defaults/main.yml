@@ -1,0 +1,33 @@
+---
+# Defaults for the uv_python_service role.
+# See docs/standards/ansible-role-boundaries.md (in hermes-agent repo) for the
+# parameter contract and which values must be set by the caller vs left default.
+
+# --- Required (no sensible default; caller must set) ---
+# service_name:        e.g. "google-workspace-mcp"
+# service_user:        e.g. "gwmcp"
+# service_home:        e.g. "/opt/google-workspace-mcp"
+# git_repo:            upstream repo URL
+# git_version:         tag / SHA (must follow docs/standards/upstream-pinning.md)
+# exec_start:          systemd ExecStart= value (full command line)
+# read_write_paths:    list of paths the unit may write to
+
+# --- Optional (overridable) ---
+python_version: "3.11"
+install_command: 'uv pip install -e "."'
+state_dir: "/var/lib/{{ service_name }}"
+env_dir: "/etc/{{ service_name }}"
+hardening_profile: "python-mcp-server"   # see docs/standards/systemd-hardening.md
+restart_policy: "on-failure"
+restart_sec: 10
+service_description: "{{ service_name }} (uv-managed Python service)"
+extra_environment: {}                    # dict of Environment= entries on the unit
+after_targets: ["network-online.target"]
+wants_targets: ["network-online.target"]
+
+# Computed paths (do not override unless you know why)
+service_app_dir: "{{ service_home }}/app"
+service_venv_dir: "{{ service_app_dir }}/venv"
+service_uv_install_dir: "{{ service_home }}/.local/bin"
+service_uv_bin: "{{ service_uv_install_dir }}/uv"
+service_env_file: "{{ env_dir }}/.env"

@@ -1,0 +1,52 @@
+[Unit]
+Description={{ service_description }}
+{% for t in after_targets %}
+After={{ t }}
+{% endfor %}
+{% for t in wants_targets %}
+Wants={{ t }}
+{% endfor %}
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User={{ service_user }}
+Group={{ service_user }}
+WorkingDirectory={{ service_app_dir }}
+Environment=HOME={{ service_home }}
+{% for k, v in extra_environment.items() %}
+Environment={{ k }}={{ v }}
+{% endfor %}
+EnvironmentFile={{ service_env_file }}
+ExecStart={{ exec_start }}
+Restart={{ restart_policy }}
+RestartSec={{ restart_sec }}
+
+# --- Hardening: baseline (docs/standards/systemd-hardening.md) ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+PrivateTmp=true
+ReadWritePaths={{ read_write_paths | join(' ') }}
+
+{% if hardening_profile == 'python-mcp-server' %}
+# --- Hardening: python-mcp-server profile additions ---
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

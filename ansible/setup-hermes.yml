@@ -1,4 +1,8 @@
 ---
+# OS baseline (timezone / NTP / unattended-upgrades / common apt + Python 3.11 assert)
+# is shared with setup-mcp-servers.yml. See base.yml.
+- import_playbook: base.yml
+
 - name: Provision Hermes Agent on standalone VM
   hosts: hermes-agent
   remote_user: debian
@@ -12,12 +16,12 @@
     hermes_env_dir: /etc/hermes-agent
     hermes_env_file: "{{ hermes_env_dir }}/.env"
     # TODO: pin to a specific tag or SHA once upstream cuts releases
+    # See docs/standards/upstream-pinning.md (in hermes-agent repo).
     hermes_git_repo: https://github.com/NousResearch/hermes-agent.git
     hermes_git_version: main
     hermes_python_version: "3.11"
     uv_install_dir: "{{ hermes_home }}/.local/bin"
     uv_bin: "{{ uv_install_dir }}/uv"
-    system_timezone: Asia/Tokyo
     # Grants the hermes service user access to the Docker daemon so the
     # upstream Docker tool backend can run containers for agent sessions.
     # WARNING: docker group membership is effectively root on the host; the
@@ -25,40 +29,7 @@
     hermes_docker_access: true
 
   tasks:
-    # ----- OS baseline (timezone / NTP / auto security updates / Docker) -----
-    - name: Read current timezone
-      ansible.builtin.command: timedatectl show -p Timezone --value
-      register: current_timezone
-      changed_when: false
-
-    - name: Set system timezone
-      ansible.builtin.command: "timedatectl set-timezone {{ system_timezone }}"
-      when: current_timezone.stdout != system_timezone
-
-    - name: Ensure systemd-timesyncd (NTP) is enabled and running
-      ansible.builtin.systemd_service:
-        name: systemd-timesyncd
-        enabled: yes
-        state: started
-
-    - name: Install unattended-upgrades
-      ansible.builtin.apt:
-        name:
-          - unattended-upgrades
-          - apt-listchanges
-        state: present
-        update_cache: yes
-
-    - name: Enable automatic package list refresh and security upgrades
-      ansible.builtin.copy:
-        dest: /etc/apt/apt.conf.d/20auto-upgrades
-        mode: "0644"
-        content: |
-          APT::Periodic::Update-Package-Lists "1";
-          APT::Periodic::Unattended-Upgrade "1";
-          APT::Periodic::AutocleanInterval "7";
-      notify: Reload unattended-upgrades
-
+    # ----- Docker (Hermes-only need: Docker tool backend for agent sessions) -----
     - name: Ensure /etc/apt/keyrings exists
       ansible.builtin.file:
         path: /etc/apt/keyrings
@@ -100,34 +71,7 @@
         enabled: yes
         state: started
 
-    # ----- Hermes-specific packages -----
-    - name: Install base packages
-      ansible.builtin.apt:
-        name:
-          - python3
-          - python3-venv
-          - python3-dev
-          - git
-          - curl
-          - ca-certificates
-          - build-essential
-          - libssl-dev
-          - libffi-dev
-          - acl
-        state: present
-        update_cache: yes
-
-    - name: Check python3 version
-      ansible.builtin.command: python3 --version
-      register: python_version_check
-      changed_when: false
-
-    - name: Assert python3 is 3.11 (required by hermes-agent upstream)
-      ansible.builtin.assert:
-        that:
-          - python_version_check.stdout is match('^Python 3\\.11(\\.|$)')
-        fail_msg: "Expected Python 3.11 (upstream install.sh hardcodes 3.11), got: {{ python_version_check.stdout }}"
-
+    # ----- Hermes Agent install -----
     - name: Create hermes service user (system account, no interactive shell)
       ansible.builtin.user:
         name: "{{ hermes_user }}"
@@ -230,8 +174,9 @@
         mode: "0600"
         force: no
       when: not hermes_env_stat.stat.exists
-      # TODO: migrate secrets to ansible-vault or SOPS for multi-user ops.
-      # Operators populate keys with `hermes setup` / `hermes config set` or by editing this file.
+      # TODO: migrate secrets to SOPS+age (see docs/standards/secrets-management.md
+      # in hermes-agent repo). Operators currently populate keys with
+      # `hermes setup` / `hermes config set` or by editing this file.
 
     - name: Install hermes-agent systemd unit
       ansible.builtin.copy:
@@ -283,11 +228,6 @@
       ansible.builtin.systemd_service:
         name: hermes-agent
         daemon_reload: yes
-        state: restarted
-
-    - name: Reload unattended-upgrades
-      ansible.builtin.systemd_service:
-        name: unattended-upgrades
         state: restarted
 
     - name: Refresh apt cache
