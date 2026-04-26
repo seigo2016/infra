@@ -1,0 +1,81 @@
+---
+# OS baseline shared by every play targeting the hermes-agent VM.
+# Imported by setup-hermes.yml and setup-mcp-servers.yml.
+# Idempotent — running this twice is a no-op.
+- name: Apply VM-wide OS baseline (timezone / NTP / auto-upgrades / common packages)
+  hosts: hermes-agent
+  remote_user: debian
+  become: yes
+
+  vars:
+    system_timezone: Asia/Tokyo
+    required_python_version: "3.11"
+
+  tasks:
+    - name: Read current timezone
+      ansible.builtin.command: timedatectl show -p Timezone --value
+      register: current_timezone
+      changed_when: false
+
+    - name: Set system timezone
+      ansible.builtin.command: "timedatectl set-timezone {{ system_timezone }}"
+      when: current_timezone.stdout != system_timezone
+
+    - name: Ensure systemd-timesyncd (NTP) is enabled and running
+      ansible.builtin.systemd_service:
+        name: systemd-timesyncd
+        enabled: yes
+        state: started
+
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+        update_cache: yes
+
+    - name: Enable automatic package list refresh and security upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+      notify: Reload unattended-upgrades
+
+    # Common packages required by both Hermes and uv-Python services.
+    # Per-service additional packages stay in their own playbook.
+    - name: Install common base packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-venv
+          - python3-dev
+          - git
+          - curl
+          - ca-certificates
+          - build-essential
+          - libssl-dev
+          - libffi-dev
+          - acl
+        state: present
+        update_cache: yes
+
+    - name: Check python3 version
+      ansible.builtin.command: python3 --version
+      register: python_version_check
+      changed_when: false
+
+    - name: Assert python3 matches required version
+      ansible.builtin.assert:
+        that:
+          - python_version_check.stdout is match('^Python ' + (required_python_version | regex_escape) + '(\\.|$)')
+        fail_msg: "Expected Python {{ required_python_version }}, got: {{ python_version_check.stdout }}"
+
+  handlers:
+    - name: Reload unattended-upgrades
+      ansible.builtin.systemd_service:
+        name: unattended-upgrades
+        state: restarted

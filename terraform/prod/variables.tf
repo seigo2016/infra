@@ -66,3 +66,8 @@ variable "network_prefix" {
 variable "gateway" {
   description = "Network gateway address"
 }
+
+variable "hermes_agent_ip" {
+  description = "IP address for the Hermes Agent standalone VM"
+  type        = string
+}

@@ -28,8 +28,28 @@ module "kubernetes_cluster" {
   # VM spec
   master_name    = "k8s-master"
   master_cores   = 4
-  master_memory  = 8192
+  master_memory  = 16384
   worker_name_prefix = "k8s-worker"
   worker_cores   = 4
   worker_memory  = 8192
+}
+
+# Standalone VM for NousResearch/hermes-agent
+module "hermes_agent" {
+  source = "../modules/hermes-agent"
+
+  proxmox_node     = var.proxmox_node
+  template_vm_base = var.template_vm_base
+  storage_pool     = var.storage_pool
+  network_bridge   = var.network_bridge
+  ssh_public_key   = file(var.ssh_public_key_path)
+
+  ip_address     = var.hermes_agent_ip
+  network_prefix = var.network_prefix
+  gateway        = var.gateway
+
+  # VM spec (override module defaults for prod workload)
+  cores     = 8
+  memory    = 16384
+  disk_size = "64G"
 }

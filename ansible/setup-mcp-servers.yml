@@ -1,0 +1,58 @@
+---
+# Provision MCP servers on the hermes-agent VM.
+# Each entry in mcp_servers gets the uv_python_service role applied.
+# Adding a new MCP server = appending one item to the mcp_servers list and
+# allocating a port from docs/standards/port-allocation.md.
+
+- import_playbook: base.yml
+
+- name: Provision MCP servers on hermes-agent VM
+  hosts: hermes-agent
+  remote_user: debian
+  become: yes
+
+  vars:
+    mcp_servers:
+      - name: google-workspace-mcp
+        user: gwmcp
+        home: /opt/google-workspace-mcp
+        git_repo: https://github.com/taylorwilsdon/google_workspace_mcp.git
+        git_version: v1.20.0
+        port: 8080
+        # Per docs/plans/google-integration.md: HTTP transport, calendar+tasks only,
+        # listen on 127.0.0.1 only. Path-quoting via {{ }} is intentional — those
+        # are computed-at-role-time variables, not Ansible host vars.
+        exec_start: >-
+          /opt/google-workspace-mcp/app/venv/bin/python
+          /opt/google-workspace-mcp/app/main.py
+          --transport streamable-http
+          --tools calendar tasks
+        read_write_paths:
+          - /opt/google-workspace-mcp
+          - /var/lib/google-workspace-mcp
+        # WORKSPACE_MCP_HOST/PORT are read from this Environment, NOT from the
+        # CLI — upstream README provides only env vars for host/port.
+        # GOOGLE_MCP_CREDENTIALS_DIR moves OAuth tokens out of the service home
+        # so they live under /var/lib/ per Linux convention.
+        extra_environment:
+          WORKSPACE_MCP_HOST: "127.0.0.1"
+          WORKSPACE_MCP_PORT: "8080"
+          GOOGLE_MCP_CREDENTIALS_DIR: "/var/lib/google-workspace-mcp/credentials"
+
+  tasks:
+    - name: Deploy each MCP server via uv_python_service role
+      ansible.builtin.include_role:
+        name: uv_python_service
+      vars:
+        service_name: "{{ item.name }}"
+        service_user: "{{ item.user }}"
+        service_home: "{{ item.home }}"
+        git_repo: "{{ item.git_repo }}"
+        git_version: "{{ item.git_version }}"
+        exec_start: "{{ item.exec_start }}"
+        read_write_paths: "{{ item.read_write_paths }}"
+        extra_environment: "{{ item.extra_environment | default({}) }}"
+        service_description: "{{ item.name }} (MCP server)"
+      loop: "{{ mcp_servers }}"
+      loop_control:
+        label: "{{ item.name }}"

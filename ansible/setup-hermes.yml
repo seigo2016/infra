@@ -1,0 +1,235 @@
+---
+# OS baseline (timezone / NTP / unattended-upgrades / common apt + Python 3.11 assert)
+# is shared with setup-mcp-servers.yml. See base.yml.
+- import_playbook: base.yml
+
+- name: Provision Hermes Agent on standalone VM
+  hosts: hermes-agent
+  remote_user: debian
+  become: yes
+
+  vars:
+    hermes_user: hermes
+    hermes_home: /opt/hermes-agent
+    hermes_app_dir: "{{ hermes_home }}/app"
+    hermes_venv_dir: "{{ hermes_app_dir }}/venv"
+    hermes_env_dir: /etc/hermes-agent
+    hermes_env_file: "{{ hermes_env_dir }}/.env"
+    # TODO: pin to a specific tag or SHA once upstream cuts releases
+    # See docs/standards/upstream-pinning.md (in hermes-agent repo).
+    hermes_git_repo: https://github.com/NousResearch/hermes-agent.git
+    hermes_git_version: main
+    hermes_python_version: "3.11"
+    uv_install_dir: "{{ hermes_home }}/.local/bin"
+    uv_bin: "{{ uv_install_dir }}/uv"
+    # Grants the hermes service user access to the Docker daemon so the
+    # upstream Docker tool backend can run containers for agent sessions.
+    # WARNING: docker group membership is effectively root on the host; the
+    # blast radius of a compromised hermes process is the whole VM.
+    hermes_docker_access: true
+
+  tasks:
+    # ----- Docker (Hermes-only need: Docker tool backend for agent sessions) -----
+    - name: Ensure /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker official GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        force: no
+
+    - name: Add Docker apt repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/docker.list
+        mode: "0644"
+        content: |
+          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+      notify: Refresh apt cache
+
+    - name: Flush apt cache refresh before installing Docker
+      ansible.builtin.meta: flush_handlers
+
+    - name: Install Docker Engine and Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker daemon is enabled and running
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: yes
+        state: started
+
+    # ----- Hermes Agent install -----
+    - name: Create hermes service user (system account, no interactive shell)
+      ansible.builtin.user:
+        name: "{{ hermes_user }}"
+        home: "{{ hermes_home }}"
+        shell: /usr/sbin/nologin
+        system: yes
+        create_home: yes
+
+    - name: Grant hermes access to Docker socket (opt-in)
+      ansible.builtin.user:
+        name: "{{ hermes_user }}"
+        groups: docker
+        append: yes
+      when: hermes_docker_access | bool
+
+    - name: Download uv installer
+      ansible.builtin.get_url:
+        url: https://astral.sh/uv/install.sh
+        dest: /tmp/uv-install.sh
+        mode: "0700"
+        owner: "{{ hermes_user }}"
+        group: "{{ hermes_user }}"
+
+    - name: Install uv under hermes user
+      ansible.builtin.command: /bin/sh /tmp/uv-install.sh
+      args:
+        creates: "{{ uv_bin }}"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+        UV_INSTALL_DIR: "{{ uv_install_dir }}"
+        UV_UNMANAGED_INSTALL: "{{ uv_install_dir }}"
+
+    - name: Clone hermes-agent source
+      ansible.builtin.git:
+        repo: "{{ hermes_git_repo }}"
+        dest: "{{ hermes_app_dir }}"
+        version: "{{ hermes_git_version }}"
+        # TODO: set update: no once pinned to a release tag / SHA
+      become_user: "{{ hermes_user }}"
+
+    - name: Create virtualenv with Python 3.11 via uv
+      ansible.builtin.command: "{{ uv_bin }} venv venv --python {{ hermes_python_version }}"
+      args:
+        chdir: "{{ hermes_app_dir }}"
+        creates: "{{ hermes_venv_dir }}/bin/python"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+
+    # Mirror upstream scripts/install.sh: try full extras, fall back to base install.
+    # `uv pip install -e ".[all]"` is used instead of `uv sync` because upstream does
+    # not maintain uv.lock in lockstep with pyproject.toml (verified on main @ 2026-04).
+    - name: Install hermes-agent with all extras
+      ansible.builtin.command: '{{ uv_bin }} pip install -e ".[all]"'
+      args:
+        chdir: "{{ hermes_app_dir }}"
+        creates: "{{ hermes_venv_dir }}/bin/hermes-agent"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+        VIRTUAL_ENV: "{{ hermes_venv_dir }}"
+      register: hermes_install_all
+      failed_when:
+        - hermes_install_all.rc != 0
+        - '"Could not find a version that satisfies" not in hermes_install_all.stderr'
+        - '"No matching distribution" not in hermes_install_all.stderr'
+        - '"Failed to build" not in hermes_install_all.stderr'
+
+    - name: Fallback - install hermes-agent base only if extras failed
+      ansible.builtin.command: '{{ uv_bin }} pip install -e "."'
+      args:
+        chdir: "{{ hermes_app_dir }}"
+      become_user: "{{ hermes_user }}"
+      environment:
+        HOME: "{{ hermes_home }}"
+        VIRTUAL_ENV: "{{ hermes_venv_dir }}"
+      when: hermes_install_all.rc is defined and hermes_install_all.rc != 0
+
+    - name: Ensure env directory exists
+      ansible.builtin.file:
+        path: "{{ hermes_env_dir }}"
+        state: directory
+        owner: "{{ hermes_user }}"
+        group: "{{ hermes_user }}"
+        mode: "0750"
+
+    - name: Check if env file already exists
+      ansible.builtin.stat:
+        path: "{{ hermes_env_file }}"
+      register: hermes_env_stat
+
+    - name: Seed env file from upstream .env.example (only if missing)
+      ansible.builtin.copy:
+        src: "{{ hermes_app_dir }}/.env.example"
+        dest: "{{ hermes_env_file }}"
+        remote_src: yes
+        owner: "{{ hermes_user }}"
+        group: "{{ hermes_user }}"
+        mode: "0600"
+        force: no
+      when: not hermes_env_stat.stat.exists
+      # TODO: migrate secrets to SOPS+age (see docs/standards/secrets-management.md
+      # in hermes-agent repo). Operators currently populate keys with
+      # `hermes setup` / `hermes config set` or by editing this file.
+
+    - name: Install hermes-agent systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/hermes-agent.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Hermes Agent (NousResearch)
+          After=network-online.target
+          Wants=network-online.target
+          StartLimitIntervalSec=120
+          StartLimitBurst=5
+
+          [Service]
+          Type=simple
+          User={{ hermes_user }}
+          Group={{ hermes_user }}
+          WorkingDirectory={{ hermes_app_dir }}
+          Environment=HOME={{ hermes_home }}
+          EnvironmentFile={{ hermes_env_file }}
+          ExecStart={{ hermes_venv_dir }}/bin/hermes-agent
+          Restart=on-failure
+          RestartSec=10
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=tmpfs
+          PrivateTmp=true
+          ReadWritePaths={{ hermes_home }}
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart hermes-agent
+
+    - name: Enable and start hermes-agent
+      ansible.builtin.systemd_service:
+        name: hermes-agent
+        daemon_reload: yes
+        enabled: yes
+        state: started
+
+    - name: Verify hermes-agent is active
+      ansible.builtin.command: systemctl is-active hermes-agent
+      register: hermes_active
+      changed_when: false
+      failed_when: hermes_active.stdout != "active"
+
+  handlers:
+    - name: Restart hermes-agent
+      ansible.builtin.systemd_service:
+        name: hermes-agent
+        daemon_reload: yes
+        state: restarted
+
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: yes

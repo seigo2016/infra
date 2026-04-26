@@ -1,0 +1,8 @@
+---
+# Handler name uses the runtime service_name so multiple instantiations of this
+# role (one per MCP server) get distinct handlers and don't collide.
+- name: "Restart {{ service_name }}"
+  ansible.builtin.systemd_service:
+    name: "{{ service_name }}"
+    daemon_reload: yes
+    state: restarted

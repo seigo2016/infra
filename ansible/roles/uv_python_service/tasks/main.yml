@@ -1,0 +1,132 @@
+---
+# Implements the 8 steps documented in docs/standards/ansible-role-boundaries.md
+# (in hermes-agent repo). Idempotent: re-running is a no-op when nothing changed.
+
+- name: "[{{ service_name }}] Validate required role arguments"
+  ansible.builtin.assert:
+    that:
+      - service_name is defined and service_name | length > 0
+      - service_user is defined and service_user | length > 0
+      - service_home is defined and service_home | length > 0
+      - git_repo is defined and git_repo | length > 0
+      - git_version is defined and git_version | length > 0
+      - exec_start is defined and exec_start | length > 0
+      - read_write_paths is defined and read_write_paths | length > 0
+    fail_msg: >-
+      uv_python_service requires service_name, service_user, service_home,
+      git_repo, git_version, exec_start, read_write_paths to be set.
+
+- name: "[{{ service_name }}] Create service user (system account, no shell)"
+  ansible.builtin.user:
+    name: "{{ service_user }}"
+    home: "{{ service_home }}"
+    shell: /usr/sbin/nologin
+    system: yes
+    create_home: yes
+
+- name: "[{{ service_name }}] Download uv installer"
+  ansible.builtin.get_url:
+    url: https://astral.sh/uv/install.sh
+    dest: "/tmp/uv-install-{{ service_name }}.sh"
+    mode: "0700"
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+
+- name: "[{{ service_name }}] Install uv under service user"
+  ansible.builtin.command: "/bin/sh /tmp/uv-install-{{ service_name }}.sh"
+  args:
+    creates: "{{ service_uv_bin }}"
+  become_user: "{{ service_user }}"
+  environment:
+    HOME: "{{ service_home }}"
+    UV_INSTALL_DIR: "{{ service_uv_install_dir }}"
+    UV_UNMANAGED_INSTALL: "{{ service_uv_install_dir }}"
+
+- name: "[{{ service_name }}] Clone upstream source"
+  ansible.builtin.git:
+    repo: "{{ git_repo }}"
+    dest: "{{ service_app_dir }}"
+    version: "{{ git_version }}"
+    # Pinned to a tag/SHA per docs/standards/upstream-pinning.md, so update is allowed
+    # only when caller bumps git_version explicitly.
+  become_user: "{{ service_user }}"
+
+- name: "[{{ service_name }}] Create virtualenv with Python {{ python_version }} via uv"
+  ansible.builtin.command: "{{ service_uv_bin }} venv venv --python {{ python_version }}"
+  args:
+    chdir: "{{ service_app_dir }}"
+    creates: "{{ service_venv_dir }}/bin/python"
+  become_user: "{{ service_user }}"
+  environment:
+    HOME: "{{ service_home }}"
+
+- name: "[{{ service_name }}] Install application via uv pip"
+  ansible.builtin.command: "{{ install_command }}"
+  args:
+    chdir: "{{ service_app_dir }}"
+  become_user: "{{ service_user }}"
+  environment:
+    HOME: "{{ service_home }}"
+    VIRTUAL_ENV: "{{ service_venv_dir }}"
+    PATH: "{{ service_uv_install_dir }}:{{ ansible_env.PATH }}"
+  # We don't have a reliable `creates:` marker (the binary name varies per app),
+  # so this runs every play. uv pip install is idempotent when nothing changed.
+  changed_when: false
+  register: uv_pip_install_result
+  failed_when:
+    - uv_pip_install_result.rc != 0
+
+- name: "[{{ service_name }}] Ensure state_dir exists"
+  ansible.builtin.file:
+    path: "{{ state_dir }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0700"
+  when: state_dir | length > 0
+
+- name: "[{{ service_name }}] Ensure env directory exists"
+  ansible.builtin.file:
+    path: "{{ env_dir }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0750"
+
+- name: "[{{ service_name }}] Check if env file already exists"
+  ansible.builtin.stat:
+    path: "{{ service_env_file }}"
+  register: service_env_stat
+
+# TODO: replace this stanza with SOPS-decrypted template once
+# docs/standards/secrets-management.md is implemented (community.sops collection).
+# For now, callers populate /etc/<service>/.env manually after first deploy.
+- name: "[{{ service_name }}] Create empty env file if missing"
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ service_env_file }}"
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0600"
+    force: no
+  when: not service_env_stat.stat.exists
+
+- name: "[{{ service_name }}] Install systemd unit"
+  ansible.builtin.template:
+    src: systemd.service.j2
+    dest: "/etc/systemd/system/{{ service_name }}.service"
+    mode: "0644"
+  notify: "Restart {{ service_name }}"
+
+- name: "[{{ service_name }}] Enable and start service"
+  ansible.builtin.systemd_service:
+    name: "{{ service_name }}"
+    daemon_reload: yes
+    enabled: yes
+    state: started
+
+- name: "[{{ service_name }}] Verify service is active"
+  ansible.builtin.command: "systemctl is-active {{ service_name }}"
+  register: service_active
+  changed_when: false
+  failed_when: service_active.stdout != "active"
