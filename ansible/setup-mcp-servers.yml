@@ -39,6 +39,28 @@
           WORKSPACE_MCP_PORT: "8080"
           GOOGLE_MCP_CREDENTIALS_DIR: "/var/lib/google-workspace-mcp/credentials"
 
+      - name: arxiv-mcp-server
+        user: arxivmcp
+        home: /opt/arxiv-mcp-server
+        git_repo: https://github.com/blazickjp/arxiv-mcp-server.git
+        git_version: v0.5.0
+        port: 8081
+        # Streamable HTTP transport, loopback only. The package exposes the
+        # `arxiv-mcp-server` console script (pyproject [project.scripts]) which
+        # reads TRANSPORT/HOST/PORT from the environment via pydantic-settings;
+        # --storage-path is the only CLI flag we need (papers persisted under
+        # /var/lib/arxiv-mcp-server/papers, outside the read-only service home).
+        exec_start: >-
+          /opt/arxiv-mcp-server/app/venv/bin/arxiv-mcp-server
+          --storage-path /var/lib/arxiv-mcp-server/papers
+        read_write_paths:
+          - /opt/arxiv-mcp-server
+          - /var/lib/arxiv-mcp-server
+        extra_environment:
+          TRANSPORT: "http"
+          HOST: "127.0.0.1"
+          PORT: "8081"
+
   tasks:
     - name: Deploy each MCP server via uv_python_service role
       ansible.builtin.include_role:
