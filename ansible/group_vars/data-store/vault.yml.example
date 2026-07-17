@@ -1,0 +1,18 @@
+---
+# Example secrets file. Copy to vault.yml and encrypt with:
+#   ansible-vault encrypt ansible/group_vars/data-store/vault.yml
+#
+# Generate vault_garage_rpc_secret with:  openssl rand -hex 32
+# Generate vault_garage_admin_token with: openssl rand -hex 32
+# rclone crypt password & salt: any high-entropy strings; back up in 1Password.
+# vault_dropbox_token_json: obtained via `rclone authorize "dropbox"` (the full
+# JSON blob including refresh_token).
+# vault_cloudflared_tunnel_token: from Cloudflare Zero Trust dashboard when
+# creating the data-store tunnel.
+
+vault_garage_rpc_secret: "REPLACE_ME_64_HEX_CHARS"
+vault_garage_admin_token: "REPLACE_ME_64_HEX_CHARS"
+vault_rclone_crypt_password: "REPLACE_ME_HIGH_ENTROPY"
+vault_rclone_crypt_salt: "REPLACE_ME_HIGH_ENTROPY"
+vault_dropbox_token_json: '{"access_token":"...","token_type":"bearer","refresh_token":"...","expiry":"..."}'
+vault_cloudflared_tunnel_token: "REPLACE_ME_FROM_CLOUDFLARE_DASHBOARD"

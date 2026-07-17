@@ -1,0 +1,11 @@
+[Unit]
+Description=Purge rclone backup trash older than {{ trash_retention_days }} days
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rclone --config {{ rclone_config_path }} delete \
+  {{ backup_trash_path_template }} \
+  --min-age {{ trash_retention_days }}d \
+  --rmdirs \
+  --log-file /var/log/rclone-backup.log --log-level INFO

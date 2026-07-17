@@ -1,0 +1,20 @@
+[garage-s3]
+type = s3
+provider = Other
+endpoint = http://127.0.0.1:3900
+region = garage
+access_key_id = {{ garage_local_access_key }}
+secret_access_key = {{ garage_local_secret_key }}
+acl = private
+
+[{{ backup_dropbox_remote }}]
+type = dropbox
+token = {{ vault_dropbox_token_json }}
+
+[{{ backup_crypt_remote }}]
+type = crypt
+remote = {{ backup_dropbox_remote }}:depth-auth-backup
+filename_encryption = standard
+directory_name_encryption = true
+password = {{ rclone_crypt_password_obscured.stdout }}
+password2 = {{ rclone_crypt_salt_obscured.stdout }}
