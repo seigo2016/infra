@@ -153,7 +153,9 @@ caddy_acme_email: mail@seigo2016.com
     owner: root
     group: "{{ caddy_group }}"
     mode: "0644"
-    validate: "{{ caddy_bin }} validate --adapter caddyfile --config %s"
+    # validate provisions the config, so the Cloudflare token must be present:
+    # pass the envfile rendered by the previous task.
+    validate: "{{ caddy_bin }} validate --envfile {{ caddy_config_dir }}/caddy.env --adapter caddyfile --config %s"
   notify: Restart caddy
 
 - name: Install caddy systemd unit
