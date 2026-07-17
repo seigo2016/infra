@@ -1,4 +1,11 @@
 ---
+# Debian's apt rclone is 1.60.1, which HEADs freshly uploaded objects with
+# ?versionId= — R2 does not implement versionId reads and returns 501
+# (rclone fixed this in v1.61.0). Install the official deb instead;
+# bump rclone_version to upgrade.
+rclone_version: "1.74.4"
+rclone_deb_url: "https://downloads.rclone.org/v{{ rclone_version }}/rclone-v{{ rclone_version }}-linux-amd64.deb"
+
 rclone_config_dir: /etc/rclone
 rclone_config_path: "{{ rclone_config_dir }}/rclone.conf"
 

@@ -1,9 +1,21 @@
 ---
-- name: Install rclone
+- name: Check installed rclone version
+  ansible.builtin.command: rclone --version
+  register: rclone_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Download rclone {{ rclone_version }} deb
+  ansible.builtin.get_url:
+    url: "{{ rclone_deb_url }}"
+    dest: "/usr/local/src/rclone-v{{ rclone_version }}.deb"
+    mode: "0644"
+  when: ("v" ~ rclone_version) not in (rclone_installed_version.stdout | default(""))
+
+- name: Install rclone {{ rclone_version }} from official deb
   ansible.builtin.apt:
-    name: rclone
-    state: present
-    update_cache: yes
+    deb: "/usr/local/src/rclone-v{{ rclone_version }}.deb"
+  when: ("v" ~ rclone_version) not in (rclone_installed_version.stdout | default(""))
 
 - name: Read Garage credentials file
   ansible.builtin.slurp:
