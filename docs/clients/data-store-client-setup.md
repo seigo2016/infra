@@ -58,7 +58,7 @@ After=network-online.target
 
 [Service]
 EnvironmentFile=%h/.config/cloudflared/data-store.env
-ExecStart=/usr/bin/cloudflared access tcp \
+ExecStart=/usr/local/bin/cloudflared access tcp \
   --hostname s3.seigo2016.com \
   --url 127.0.0.1:13900 \
   --service-token-id ${TUNNEL_SERVICE_TOKEN_ID} \
@@ -76,6 +76,19 @@ systemctl --user daemon-reload
 systemctl --user enable --now cloudflared-garage
 systemctl --user status cloudflared-garage
 ```
+
+注意:
+
+- `ExecStart` のパスは `command -v cloudflared` の結果に合わせる
+  （apt 版は `/usr/bin/cloudflared`、手動配置は `/usr/local/bin/cloudflared`）。
+- `systemctl --user` が `Failed to connect to bus` になる WSL は systemd が
+  PID 1 で動いていない。`/etc/wsl.conf` に以下を追記し、Windows 側で
+  `wsl --shutdown` 後に再起動すると使えるようになる:
+
+  ```ini
+  [boot]
+  systemd=true
+  ```
 
 macOS は `launchd` plist、Windows は タスクスケジューラまたは `nssm` で同等の常駐化を行う。
 
