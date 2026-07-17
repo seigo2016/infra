@@ -68,9 +68,11 @@
   changed_when: false
 
 - name: Create bucket
+  # Compare whole tokens, not substrings: "dvc" is a substring of the legacy
+  # "depth-auth-dvc" alias and would false-positive with `in stdout`.
   ansible.builtin.command:
     cmd: /usr/local/bin/garage -c /etc/garage.toml bucket create {{ garage_bucket }}
-  when: garage_bucket not in garage_bucket_list.stdout
+  when: garage_bucket not in garage_bucket_list.stdout.split()
   changed_when: true
 
 - name: List existing access keys
@@ -82,7 +84,7 @@
 - name: Create access key
   ansible.builtin.command:
     cmd: /usr/local/bin/garage -c /etc/garage.toml key create {{ garage_key_name }}
-  when: garage_key_name not in garage_key_list.stdout
+  when: garage_key_name not in garage_key_list.stdout.split()
   changed_when: true
 
 - name: Retrieve key info (with secret)
