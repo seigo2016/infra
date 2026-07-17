@@ -14,8 +14,8 @@ data-store VM（Garage S3）が失われた / 巻き戻したい場合の復元�
 新 VM を Terraform + Ansible でプロビジョニングした後、VM 上で:
 
 ```bash
-sudo rclone --config /etc/rclone/rclone.conf sync r2-crypt:dvc-cache garage-s3:depth-auth-dvc --transfers 8 --fast-list
-sudo rclone --config /etc/rclone/rclone.conf cryptcheck garage-s3:depth-auth-dvc r2-crypt:dvc-cache
+sudo rclone --config /etc/rclone/rclone.conf sync r2-crypt:dvc-cache garage-s3:dvc --transfers 8 --fast-list
+sudo rclone --config /etc/rclone/rclone.conf cryptcheck garage-s3:dvc r2-crypt:dvc-cache
 ```
 
 注意:
@@ -45,5 +45,5 @@ sudo systemctl start garage
 
 ```bash
 sudo rclone --config /etc/rclone/rclone.conf ls r2-crypt:trash/
-sudo rclone --config /etc/rclone/rclone.conf copy r2-crypt:trash/YYYY-MM-DD/<path> garage-s3:depth-auth-dvc/<path>
+sudo rclone --config /etc/rclone/rclone.conf copy r2-crypt:trash/YYYY-MM-DD/<path> garage-s3:dvc/<path>
 ```

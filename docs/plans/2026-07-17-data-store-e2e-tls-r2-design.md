@@ -48,12 +48,15 @@ VM 内に移す。
 
 rclone crypt レイヤ（クライアント側暗号化）は流用し、リモート定義のみ差し替え。
 
-- R2 バケット `depth-auth-backup` + バケットスコープの S3 API トークンを
+- R2 バケット `data-store-backup` + バケットスコープの S3 API トークンを
   手動作成（手順は実装計画に記載）。
+- マルチプロジェクト方針: Garage バケットは汎用 `dvc` 1つ、プロジェクトは
+  `s3://dvc/<project>` プレフィックスで分ける（旧 `depth-auth-dvc` バケットは
+  空なので削除）。
 - `rclone.conf`: `dropbox-raw` / `dropbox-crypt` を削除し、
   `r2-raw`（type s3, provider Cloudflare,
   endpoint `https://<account_id>.r2.cloudflarestorage.com`）+
-  `r2-crypt`（crypt over `r2-raw:depth-auth-backup`）に置換。
+  `r2-crypt`（crypt over `r2-raw:data-store-backup`）に置換。
   crypt パスワード/salt は**既存値を流用**（1Password にバックアップ済み）。
 - systemd timer 群は宛先を `r2-crypt:dvc-cache` に変更。
   バックアップ sync は**日次 → 週次（日曜 03:30）**に変更（RPO 最大7日を

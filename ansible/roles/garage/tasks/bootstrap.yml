@@ -100,7 +100,7 @@
     mode: "0600"
     content: |
       # Garage access credentials for key '{{ garage_key_name }}'.
-      # Copy access_key_id and secret_access_key into depth-auth/.dvc/config.local.
+      # Copy access_key_id and secret_access_key into each project's .dvc/config.local.
       {{ garage_key_info.stdout }}
   no_log: true
 

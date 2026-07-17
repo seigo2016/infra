@@ -101,7 +101,7 @@ show_credentials() {
     log_info "Garage アクセスキーを取得します (data-store VM の /root/.garage-credentials)..."
     echo ""
     echo "================================================="
-    echo -e "${GREEN}以下を depth-auth/.dvc/config.local に貼り付けてください${NC}"
+    echo -e "${GREEN}以下を各プロジェクトの .dvc/config.local に貼り付けてください${NC}"
     echo "================================================="
     ssh -i ~/.ssh/id_ed25519_k8s \
         -o ProxyJump=ss -o StrictHostKeyChecking=accept-new \

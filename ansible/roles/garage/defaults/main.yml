@@ -17,5 +17,5 @@ garage_replication_factor: 1
 garage_zone: local
 garage_capacity: "1TB"
 
-garage_bucket: depth-auth-dvc
+garage_bucket: dvc
 garage_key_name: dvc-client

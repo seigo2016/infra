@@ -299,6 +299,8 @@ meta_snapshot_retention_count: 7
 trash_retention_days: 30
 ```
 
+追補: バケット名は後にマルチプロジェクト対応で汎用化された（`garage_bucket: dvc` / `r2_bucket: data-store-backup`）。
+
 **Step 2: `templates/rclone.conf.j2` — dropbox セクションを R2 に置換**
 
 ```
@@ -498,11 +500,11 @@ git commit -m "docs: update port allocation, client setup and deploy script for 
 
 **Step 1: R2 バケット**
 dash.cloudflare.com → R2 → Create bucket
-- Name: `depth-auth-backup`, Location: Asia-Pacific (APAC)
+- Name: `data-store-backup`, Location: Asia-Pacific (APAC)
 
 **Step 2: R2 API トークン**
 R2 → Manage R2 API Tokens → Create API Token
-- Permissions: **Object Read & Write**、Specify bucket: `depth-auth-backup` のみ
+- Permissions: **Object Read & Write**、Specify bucket: `data-store-backup` のみ
 - 控える: Access Key ID / Secret Access Key / Account ID
   （エンドポイント `https://<account_id>.r2.cloudflarestorage.com` に表示）
 
@@ -551,7 +553,16 @@ Expected: `9`
 
 Expected: failed=0
 
-**Step 2: Caddy 証明書取得を確認**
+**Step 2: 旧バケットを削除**
+
+```bash
+ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss debian@172.16.0.220 \
+  'sudo garage -c /etc/garage.toml bucket delete --yes depth-auth-dvc'
+```
+
+旧バケットは空。新バケット `dvc` は再適用時の bootstrap が作成・権限付与する。
+
+**Step 3: Caddy 証明書取得を確認**
 
 ```bash
 ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss debian@172.16.0.220 \
@@ -560,7 +571,7 @@ ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss debian@172.16.0.220 \
 
 Expected: 両ホスト名で `certificate obtained successfully`、error なし
 
-**Step 3: TLS 応答を検証（VM 上から）**
+**Step 4: TLS 応答を検証（VM 上から）**
 
 ```bash
 ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss debian@172.16.0.220 \
@@ -589,13 +600,14 @@ Expected: `SSL certificate verify ok`（HTTP ステータスは 4xx でよい �
 ### Task 9: DVC クライアント設定 + push 検証
 
 **Step 1:** `docs/clients/data-store-client-setup.md` の手順どおり
-`depth-auth` リポジトリの `.dvc/config` を新 endpointurl に更新、
+`depth-auth` リポジトリの `.dvc/config` を新 endpointurl に更新
+（`url = s3://dvc/depth-auth`。他プロジェクトは `s3://dvc/<project>`）、
 `~/.aws/config` に `addressing_style = path` を追加
 
 **Step 2: S3 操作確認**
 
 ```bash
-AWS_PROFILE=garage aws --endpoint-url=https://s3-local.seigo2016.com:13900 s3 ls s3://depth-auth-dvc
+AWS_PROFILE=garage aws --endpoint-url=https://s3-local.seigo2016.com:13900 s3 ls s3://dvc/
 ```
 
 Expected: エラーなし（空リスト可）
@@ -625,7 +637,7 @@ Expected: エラーなし・転送完了ログ
 ```bash
 ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss debian@172.16.0.220 \
   'sudo rclone --config /etc/rclone/rclone.conf ls r2-crypt:dvc-cache | head -5; \
-   sudo rclone --config /etc/rclone/rclone.conf lsd r2-raw:depth-auth-backup'
+   sudo rclone --config /etc/rclone/rclone.conf lsd r2-raw:data-store-backup'
 ```
 
 Expected: crypt 経由では平文ファイル名、raw 経由ではランダム暗号名
@@ -635,7 +647,7 @@ Expected: crypt 経由では平文ファイル名、raw 経由ではランダム
 
 ```bash
 ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss debian@172.16.0.220 \
-  'sudo rclone --config /etc/rclone/rclone.conf cryptcheck garage-s3:depth-auth-dvc r2-crypt:dvc-cache'
+  'sudo rclone --config /etc/rclone/rclone.conf cryptcheck garage-s3:dvc r2-crypt:dvc-cache'
 ```
 
 Expected: `0 differences found`

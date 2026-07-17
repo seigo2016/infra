@@ -10,7 +10,7 @@
 # vault_cloudflare_dns_api_token: API token with Zone:DNS:Edit on seigo2016.com
 # only (used by Caddy for Let's Encrypt DNS-01).
 # vault_r2_*: from Cloudflare dashboard > R2 > Manage R2 API Tokens
-# (Object Read & Write, scoped to the depth-auth-backup bucket).
+# (Object Read & Write, scoped to the data-store-backup bucket).
 
 vault_garage_rpc_secret: "REPLACE_ME_64_HEX_CHARS"
 vault_garage_admin_token: "REPLACE_ME_64_HEX_CHARS"
