@@ -82,10 +82,12 @@ deploy_infrastructure() {
 run_ansible() {
     log_info "Ansible (setup-data-store.yml) を実行します..."
     cd "$ANSIBLE_DIR"
-    # ip 到達待ち
-    log_info "SSH 到達を待機 (${TF_VAR_data_store_ip}) ..."
+    # ip 到達待ち（VM へは踏み台 ss 経由でしか届かないので ssh で確認する）
+    log_info "SSH 到達を待機 (${TF_VAR_data_store_ip} via ss) ..."
     for _ in $(seq 1 30); do
-        if nc -z -w 2 "${TF_VAR_data_store_ip}" 22 2>/dev/null; then
+        if ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss \
+            -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -o BatchMode=yes \
+            debian@"${TF_VAR_data_store_ip}" exit 2>/dev/null; then
             break
         fi
         sleep 5
