@@ -1,0 +1,73 @@
+---
+- name: Create caddy group
+  ansible.builtin.group:
+    name: "{{ caddy_group }}"
+    system: yes
+
+- name: Create caddy user
+  ansible.builtin.user:
+    name: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    system: yes
+    home: "{{ caddy_data_dir }}"
+    create_home: no
+    shell: /usr/sbin/nologin
+
+- name: Download caddy with cloudflare-dns module
+  ansible.builtin.get_url:
+    url: "{{ caddy_download_url }}"
+    dest: "{{ caddy_bin }}"
+    mode: "0755"
+    owner: root
+    group: root
+    force: no
+
+- name: Create caddy directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: "0750"
+  loop:
+    - "{{ caddy_config_dir }}"
+    - "{{ caddy_data_dir }}"
+
+- name: Render caddy environment file (Cloudflare DNS token)
+  ansible.builtin.template:
+    src: caddy.env.j2
+    dest: "{{ caddy_config_dir }}/caddy.env"
+    owner: root
+    group: "{{ caddy_group }}"
+    mode: "0640"
+  no_log: true
+  notify: Restart caddy
+
+- name: Render Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ caddy_config_dir }}/Caddyfile"
+    owner: root
+    group: "{{ caddy_group }}"
+    mode: "0644"
+  notify: Restart caddy
+
+- name: Install caddy systemd unit
+  ansible.builtin.template:
+    src: caddy.service.j2
+    dest: /etc/systemd/system/caddy.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart caddy
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure caddy is enabled and started
+  ansible.builtin.systemd_service:
+    name: caddy
+    enabled: yes
+    state: started

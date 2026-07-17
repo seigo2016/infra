@@ -1,6 +1,6 @@
 ---
 # Provisions the data-store VM: OS baseline + Garage S3 + cloudflared tunnel +
-# rclone backup to Dropbox (crypt). Idempotent — re-running is a no-op.
+# TLS termination (Caddy) + rclone backup to R2 (crypt). Idempotent — re-running is a no-op.
 
 - name: Apply OS baseline for data-store
   hosts: data-store
@@ -62,5 +62,6 @@
 
   roles:
     - role: garage
+    - role: caddy
     - role: cloudflared
     - role: rclone-backup
