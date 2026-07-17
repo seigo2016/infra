@@ -77,6 +77,9 @@ git commit -m "feat: add data-store baseline (Garage S3 + cloudflared + Dropbox 
 ---
 # Caddy binary is downloaded from the official build service with the
 # cloudflare DNS module compiled in (needed for DNS-01 without opening ports).
+# NOTE: the build service always serves the latest release and get_url uses
+# force: no, so the binary is frozen at first deploy. To upgrade Caddy:
+#   ssh data-store 'sudo rm /usr/local/bin/caddy' && re-run the playbook.
 caddy_download_url: "https://caddyserver.com/api/download?os=linux&arch=amd64&p=github.com%2Fcaddy-dns%2Fcloudflare"
 caddy_bin: /usr/local/bin/caddy
 
@@ -150,6 +153,7 @@ caddy_acme_email: mail@seigo2016.com
     owner: root
     group: "{{ caddy_group }}"
     mode: "0644"
+    validate: "{{ caddy_bin }} validate --adapter caddyfile --config %s"
   notify: Restart caddy
 
 - name: Install caddy systemd unit
@@ -195,7 +199,7 @@ caddy_acme_email: mail@seigo2016.com
 **Step 4: `templates/caddy.env.j2`**
 
 ```
-CF_DNS_API_TOKEN={{ vault_cloudflare_dns_api_token }}
+CF_DNS_API_TOKEN="{{ vault_cloudflare_dns_api_token }}"
 ```
 
 **Step 5: `templates/caddy.service.j2`**
@@ -213,12 +217,13 @@ EnvironmentFile={{ caddy_config_dir }}/caddy.env
 Environment=XDG_DATA_HOME={{ caddy_data_dir }}
 Environment=XDG_CONFIG_HOME={{ caddy_data_dir }}
 ExecStart={{ caddy_bin }} run --config {{ caddy_config_dir }}/Caddyfile
-ExecReload={{ caddy_bin }} reload --config {{ caddy_config_dir }}/Caddyfile --force
 Restart=on-failure
 RestartSec=5
+LimitNOFILE=1048576
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
+ProtectHome=true
 ReadWritePaths={{ caddy_data_dir }}
 
 [Install]

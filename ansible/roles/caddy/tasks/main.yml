@@ -50,6 +50,7 @@
     owner: root
     group: "{{ caddy_group }}"
     mode: "0644"
+    validate: "{{ caddy_bin }} validate --adapter caddyfile --config %s"
   notify: Restart caddy
 
 - name: Install caddy systemd unit

@@ -10,12 +10,13 @@ EnvironmentFile={{ caddy_config_dir }}/caddy.env
 Environment=XDG_DATA_HOME={{ caddy_data_dir }}
 Environment=XDG_CONFIG_HOME={{ caddy_data_dir }}
 ExecStart={{ caddy_bin }} run --config {{ caddy_config_dir }}/Caddyfile
-ExecReload={{ caddy_bin }} reload --config {{ caddy_config_dir }}/Caddyfile --force
 Restart=on-failure
 RestartSec=5
+LimitNOFILE=1048576
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
+ProtectHome=true
 ReadWritePaths={{ caddy_data_dir }}
 
 [Install]
