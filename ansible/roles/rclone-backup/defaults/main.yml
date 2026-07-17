@@ -3,8 +3,9 @@ rclone_config_dir: /etc/rclone
 rclone_config_path: "{{ rclone_config_dir }}/rclone.conf"
 
 garage_bucket: depth-auth-dvc
-backup_dropbox_remote: dropbox-raw
-backup_crypt_remote: dropbox-crypt
+backup_r2_remote: r2-raw
+backup_crypt_remote: r2-crypt
+r2_bucket: depth-auth-backup
 backup_dest_path: "{{ backup_crypt_remote }}:dvc-cache"
 backup_trash_path_template: "{{ backup_crypt_remote }}:trash"
 

@@ -1,8 +1,8 @@
 [Unit]
-Description=Daily garage-backup timer
+Description=Weekly garage-backup timer
 
 [Timer]
-OnCalendar=*-*-* 03:30:00
+OnCalendar=Sun *-*-* 03:30:00
 Persistent=true
 RandomizedDelaySec=30m
 Unit=garage-backup.service
