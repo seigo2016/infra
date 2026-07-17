@@ -37,8 +37,8 @@ VM 内に移す。
 - **クライアント側の証明書検証**: `/etc/hosts` 改変は `cloudflared access tcp`
   自身の名前解決を壊すため使わない。代わりに
   **`s3-local.seigo2016.com` → `127.0.0.1` のパブリック A レコード（DNS only）**
-  を作成し、Caddy の証明書に SAN として `s3.seigo2016.com` と
-  `s3-local.seigo2016.com` の両方を含める。クライアントは:
+  を作成し、Caddy が `s3.seigo2016.com` と `s3-local.seigo2016.com`
+  それぞれの証明書を取得する（SNI で選択される）。クライアントは:
   - `cloudflared access tcp --hostname s3.seigo2016.com --url 127.0.0.1:13900`
     （従来どおり）
   - DVC endpointurl = `https://s3-local.seigo2016.com:13900`、`use_ssl = true`

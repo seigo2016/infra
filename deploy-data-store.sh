@@ -1,5 +1,5 @@
 #!/bin/bash
-# data-store (Garage S3 + cloudflared + rclone backup) 自動デプロイスクリプト
+# data-store (Garage S3 + caddy TLS + cloudflared + rclone backup) 自動デプロイスクリプト
 
 set -e
 
@@ -118,7 +118,7 @@ data-store 自動デプロイスクリプト
   $0 [オプション]
 
 オプション:
-  deploy      - VM を作成し Garage / cloudflared / rclone-backup を構成
+  deploy      - VM を作成し Garage / caddy / cloudflared / rclone-backup を構成
   ansible     - Ansible のみ再実行（VM はそのまま）
   credentials - Garage アクセスキーを表示
   destroy     - VM を削除（バックアップは R2 に残ります）

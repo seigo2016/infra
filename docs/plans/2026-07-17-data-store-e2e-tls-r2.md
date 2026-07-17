@@ -184,6 +184,7 @@ caddy_acme_email: mail@seigo2016.com
 ```
 {
 	admin off
+	auto_https disable_redirects
 	email {{ caddy_acme_email }}
 }
 
@@ -530,7 +531,7 @@ ansible-vault edit ansible/group_vars/data-store/vault.yml
 **Step 2: 検証**
 
 ```bash
-ansible-vault view ansible/group_vars/data-store/vault.yml | grep -c "vault_"
+ansible-vault view ansible/group_vars/data-store/vault.yml | grep -c '^vault_'
 ```
 
 Expected: `9`
@@ -634,7 +635,7 @@ Expected: crypt 経由では平文ファイル名、raw 経由ではランダム
 
 ```bash
 ssh -i ~/.ssh/id_ed25519_k8s -o ProxyJump=ss debian@172.16.0.220 \
-  'sudo rclone --config /etc/rclone/rclone.conf check garage-s3:depth-auth-dvc r2-crypt:dvc-cache'
+  'sudo rclone --config /etc/rclone/rclone.conf cryptcheck garage-s3:depth-auth-dvc r2-crypt:dvc-cache'
 ```
 
 Expected: `0 differences found`
