@@ -7,9 +7,11 @@
 
 - Cloudflare Zero Trust ダッシュボードで
   1. Tunnel `data-store` を作成し VM 側で `cloudflared` が `Healthy`
-  2. Public hostname `s3.seigo2016.com` → `http://localhost:3900` で公開
+  2. Public hostname `s3.seigo2016.com` → Service **TCP** `localhost:3904` で公開（Caddy TLS 終端への raw TCP パススルー）
   3. Access Application `s3.seigo2016.com` に Service Token (`depth-auth-dvc-client`) 必須ポリシーを付与
 - 上記 Service Token (Client ID / Secret) を取得済み
+- Cloudflare DNS に A レコード `s3-local.seigo2016.com → 127.0.0.1`（Proxy status: **DNS only**）が存在する
+- VM 上の Caddy が `s3.seigo2016.com` / `s3-local.seigo2016.com` 両方の有効な Let's Encrypt 証明書を保持している
 
 ## 1. cloudflared インストール
 
@@ -77,7 +79,12 @@ systemctl --user status cloudflared-garage
 
 macOS は `launchd` plist、Windows は タスクスケジューラまたは `nssm` で同等の常駐化を行う。
 
-## 4. boto3 multipart 設定（Cloudflare Free 100MB 制限の回避）
+## 4. boto3 設定（multipart + path-style）
+
+raw TCP パススルーになったため Cloudflare の 100MB HTTP ボディ制限は適用され
+なくなったが、multipart は再開可能性・並列化のため維持する。また
+virtual-hosted style だと `depth-auth-dvc.s3-local.seigo2016.com` を解決しよ
+うとして失敗するため、`addressing_style = path` を必ず指定する。
 
 `~/.aws/config` に追加:
 
@@ -87,6 +94,7 @@ s3 =
     multipart_threshold = 64MB
     multipart_chunksize = 64MB
     max_concurrent_requests = 8
+    addressing_style = path
 ```
 
 DVC 実行時は `AWS_PROFILE=garage` を強制する。`depth-auth/scripts/dvc-garage`
@@ -103,9 +111,8 @@ AWS_PROFILE=garage dvc push -r garage
 ```ini
 ['remote "garage"']
     url = s3://depth-auth-dvc
-    endpointurl = http://127.0.0.1:13900
+    endpointurl = https://s3-local.seigo2016.com:13900
     region = garage
-    use_ssl = false
 [core]
     remote = garage
 ```
@@ -126,11 +133,15 @@ systemctl --user status cloudflared-garage
 
 # S3 list
 AWS_PROFILE=garage \
-  aws --endpoint-url=http://127.0.0.1:13900 s3 ls s3://depth-auth-dvc
+  aws --endpoint-url=https://s3-local.seigo2016.com:13900 s3 ls s3://depth-auth-dvc
 
 # DVC push (小さなものから)
 AWS_PROFILE=garage dvc push -r garage <some-small.dvc>
 ```
+
+証明書検証は必ず通ること。`--no-verify-ssl` は絶対に付けないこと — 検証に失
+敗する場合は構成のどこかが壊れている（`s3-local.seigo2016.com` の A レコード
+と VM 側 Caddy の証明書を確認する）。
 
 LAN外（大学 / モバイル回線）からも同じコマンドで動くこと（Tunnel経由なので
 ネットワーク場所に依存しない）を必ず確認すること。

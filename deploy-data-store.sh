@@ -17,7 +17,7 @@ cat << 'EOF'
 | |_| | (_| | || (_| |  ___) | || (_) | | |  __/
 |____/ \__,_|\__\__,_| |____/ \__\___/|_|  \___|
 
-Garage S3 / cloudflared / rclone-crypt → Dropbox
+Garage S3 / caddy TLS / cloudflared / rclone-crypt → R2
 EOF
 echo -e "${NC}"
 
@@ -121,14 +121,14 @@ data-store 自動デプロイスクリプト
   deploy      - VM を作成し Garage / cloudflared / rclone-backup を構成
   ansible     - Ansible のみ再実行（VM はそのまま）
   credentials - Garage アクセスキーを表示
-  destroy     - VM を削除（バックアップは Dropbox に残ります）
+  destroy     - VM を削除（バックアップは R2 に残ります）
   help        - このヘルプを表示
 EOF
 }
 
 destroy_infrastructure() {
     log_warning "data-store VM を削除しようとしています。"
-    log_warning "Dropbox crypt バックアップは残りますが、Garage 上のデータ・メタDBは失われます。"
+    log_warning "R2 crypt バックアップは残りますが、Garage 上のデータ・メタDBは失われます。"
     read -p "本当に削除しますか？ 'DELETE' と入力してください: " confirm
     if [ "$confirm" != "DELETE" ]; then
         log_info "削除をキャンセルしました"
