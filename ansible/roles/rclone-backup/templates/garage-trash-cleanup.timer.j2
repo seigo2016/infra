@@ -1,8 +1,8 @@
 [Unit]
-Description=Weekly garage backup trash cleanup timer
+Description=Weekly garage backup trash cleanup timer (Mondays)
 
 [Timer]
-OnCalendar=Sun *-*-* 04:00:00
+OnCalendar=Mon *-*-* 04:00:00
 Persistent=true
 RandomizedDelaySec=1h
 Unit=garage-trash-cleanup.service

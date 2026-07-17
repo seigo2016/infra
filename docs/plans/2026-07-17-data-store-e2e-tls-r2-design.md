@@ -55,11 +55,14 @@ rclone crypt レイヤ（クライアント側暗号化）は流用し、リモ�
   endpoint `https://<account_id>.r2.cloudflarestorage.com`）+
   `r2-crypt`（crypt over `r2-raw:depth-auth-backup`）に置換。
   crypt パスワード/salt は**既存値を流用**（1Password にバックアップ済み）。
-- systemd timer 群はロジック不変、宛先のみ `r2-crypt:dvc-cache` に変更。
-  バックアップ sync は**日次 → 週次**に変更（RPO 最大7日を許容。頻度は
-  コストにほぼ影響せず、R2 コストは保存容量で決まる）。ローカルの
-  meta-snapshot（Garage メタDB、容量小・R2 非転送）は日次のまま、
-  trash 30日保持も維持。
+- systemd timer 群は宛先を `r2-crypt:dvc-cache` に変更。
+  バックアップ sync は**日次 → 週次（日曜 03:30）**に変更（RPO 最大7日を
+  許容。頻度はコストにほぼ影響せず、R2 コストは保存容量で決まる）。
+  meta-snapshot（Garage メタDB）は**日次のまま、暗号化して R2 の
+  `meta-snapshots/` にもアップロードする**（メタDBの RPO は1日。
+  ローカル・リモートとも 7 世代保持でプルーニング）。
+  trash は日付ディレクトリ名（`trash/YYYY-MM-DD/`）ベースで
+  30日経過分を purge（月曜 04:00 実行）。
 - vault 変更:
   - 削除: `vault_dropbox_token_json`
   - 追加: `vault_r2_access_key_id`, `vault_r2_secret_access_key`,

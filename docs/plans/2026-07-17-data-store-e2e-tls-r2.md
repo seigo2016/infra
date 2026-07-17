@@ -366,6 +366,19 @@ git add ansible/roles/rclone-backup/
 git commit -m "feat: switch backup destination from Dropbox to R2, weekly schedule"
 ```
 
+**追補（レビュー反映）: retention 系テンプレートの修正**
+
+上記に加え、レビュー指摘により同ロールの以下 3 点も変更済み:
+
+- `garage-trash-cleanup.service.j2`: `rclone delete --min-age`（オブジェクト
+  mtime 基準で削除日と無関係）をやめ、`trash/YYYY-MM-DD/` の日付ディレクトリ名
+  を cutoff 日付と辞書順比較して `rclone purge` する方式に変更。
+- `garage-trash-cleanup.timer.j2`: 日曜のバックアップ sync と重ならないよう
+  `OnCalendar=Mon *-*-* 04:00:00` に変更。
+- `garage-meta-snapshot.service.j2`: R2 側 `meta-snapshots/` も
+  `meta_snapshot_retention_count` 世代で世代プルーニングを追加
+  （ローカルのみ削除で、リモートが無制限に肥大するのを修正）。
+
 ### Task 3: vault.yml.example 更新
 
 **Files:**
