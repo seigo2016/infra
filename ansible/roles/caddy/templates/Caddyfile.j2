@@ -1,0 +1,13 @@
+{
+	admin off
+	auto_https disable_redirects
+	email {{ caddy_acme_email }}
+}
+
+{% for host in caddy_hostnames %}{{ host }}:{{ caddy_tls_port }}{{ ", " if not loop.last }}{% endfor %} {
+	bind {{ caddy_tls_bind }}
+	tls {
+		dns cloudflare {env.CF_DNS_API_TOKEN}
+	}
+	reverse_proxy {{ caddy_upstream }}
+}

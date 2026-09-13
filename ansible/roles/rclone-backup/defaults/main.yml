@@ -1,0 +1,21 @@
+---
+# Debian's apt rclone is 1.60.1, which HEADs freshly uploaded objects with
+# ?versionId= — R2 does not implement versionId reads and returns 501
+# (rclone fixed this in v1.61.0). Install the official deb instead;
+# bump rclone_version to upgrade.
+rclone_version: "1.74.4"
+rclone_deb_url: "https://downloads.rclone.org/v{{ rclone_version }}/rclone-v{{ rclone_version }}-linux-amd64.deb"
+
+rclone_config_dir: /etc/rclone
+rclone_config_path: "{{ rclone_config_dir }}/rclone.conf"
+
+garage_bucket: dvc
+backup_r2_remote: r2-raw
+backup_crypt_remote: r2-crypt
+r2_bucket: data-store-backup
+backup_dest_path: "{{ backup_crypt_remote }}:dvc-cache"
+backup_trash_path_template: "{{ backup_crypt_remote }}:trash"
+
+meta_snapshot_dir: /var/backups/garage-meta
+meta_snapshot_retention_count: 7
+trash_retention_days: 30

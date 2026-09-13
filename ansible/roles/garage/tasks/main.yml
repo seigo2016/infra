@@ -1,0 +1,80 @@
+---
+# Garage is run under systemd DynamicUser=true (per upstream's systemd
+# cookbook). The runtime UID/GID are allocated by systemd and StateDirectory
+# manages /var/lib/garage ownership automatically — so we don't pre-create a
+# 'garage' system user or chown the data directories.
+
+- name: Ensure /etc/garage exists for secret files
+  ansible.builtin.file:
+    path: /etc/garage
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check installed garage version
+  ansible.builtin.command: /usr/local/bin/garage --version
+  register: garage_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Download garage binary
+  ansible.builtin.get_url:
+    url: "{{ garage_download_url }}"
+    dest: /usr/local/bin/garage
+    mode: "0755"
+    owner: root
+    group: root
+    force: yes
+  when: garage_installed_version.rc != 0 or garage_version not in garage_installed_version.stdout
+  notify: garage config changed
+
+- name: Write secret files referenced by garage.toml
+  ansible.builtin.copy:
+    dest: "/etc/garage/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.value }}\n"
+  loop:
+    - { name: rpc_secret, value: "{{ vault_garage_rpc_secret }}" }
+    - { name: admin_token, value: "{{ vault_garage_admin_token }}" }
+    - { name: metrics_token, value: "{{ vault_garage_admin_token }}" }
+  no_log: true
+  notify: garage config changed
+
+- name: Render garage.toml
+  ansible.builtin.template:
+    src: garage.toml.j2
+    dest: /etc/garage.toml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: garage config changed
+
+- name: Install garage systemd unit
+  ansible.builtin.template:
+    src: garage.service.j2
+    dest: /etc/systemd/system/garage.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: garage config changed
+
+- name: Flush handlers before bootstrap
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start garage
+  ansible.builtin.systemd_service:
+    name: garage
+    enabled: yes
+    state: started
+
+- name: Wait for garage S3 API to accept connections
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 3900
+    timeout: 30
+
+- name: Bootstrap garage layout and bucket
+  ansible.builtin.import_tasks: bootstrap.yml

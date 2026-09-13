@@ -1,0 +1,100 @@
+---
+- name: Check installed rclone version
+  ansible.builtin.command: rclone --version
+  register: rclone_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Download rclone {{ rclone_version }} deb
+  ansible.builtin.get_url:
+    url: "{{ rclone_deb_url }}"
+    dest: "/usr/local/src/rclone-v{{ rclone_version }}.deb"
+    mode: "0644"
+  when: ("v" ~ rclone_version) not in (rclone_installed_version.stdout | default(""))
+
+- name: Install rclone {{ rclone_version }} from official deb
+  ansible.builtin.apt:
+    deb: "/usr/local/src/rclone-v{{ rclone_version }}.deb"
+  when: ("v" ~ rclone_version) not in (rclone_installed_version.stdout | default(""))
+
+- name: Read Garage credentials file
+  ansible.builtin.slurp:
+    src: /root/.garage-credentials
+  register: garage_credentials_raw
+  no_log: true
+
+- name: Extract Garage access key
+  ansible.builtin.set_fact:
+    garage_local_access_key: >-
+      {{ (garage_credentials_raw.content | b64decode
+          | regex_search('Key ID:\s*(\S+)', '\1') | first) }}
+    garage_local_secret_key: >-
+      {{ (garage_credentials_raw.content | b64decode
+          | regex_search('Secret key:\s*(\S+)', '\1') | first) }}
+  no_log: true
+
+- name: Create rclone config directory
+  ansible.builtin.file:
+    path: "{{ rclone_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Create meta snapshot directory
+  ansible.builtin.file:
+    path: "{{ meta_snapshot_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Obscure rclone crypt password
+  ansible.builtin.command: rclone obscure {{ vault_rclone_crypt_password }}
+  register: rclone_crypt_password_obscured
+  changed_when: false
+  no_log: true
+
+- name: Obscure rclone crypt salt
+  ansible.builtin.command: rclone obscure {{ vault_rclone_crypt_salt }}
+  register: rclone_crypt_salt_obscured
+  changed_when: false
+  no_log: true
+
+- name: Render rclone.conf
+  ansible.builtin.template:
+    src: rclone.conf.j2
+    dest: "{{ rclone_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install backup units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { src: garage-backup.service.j2, dest: garage-backup.service }
+    - { src: garage-backup.timer.j2, dest: garage-backup.timer }
+    - { src: garage-meta-snapshot.service.j2, dest: garage-meta-snapshot.service }
+    - { src: garage-meta-snapshot.timer.j2, dest: garage-meta-snapshot.timer }
+    - { src: garage-trash-cleanup.service.j2, dest: garage-trash-cleanup.service }
+    - { src: garage-trash-cleanup.timer.j2, dest: garage-trash-cleanup.timer }
+  notify: Reload systemd
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable backup timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  loop:
+    - garage-backup.timer
+    - garage-meta-snapshot.timer
+    - garage-trash-cleanup.timer

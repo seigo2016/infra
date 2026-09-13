@@ -71,3 +71,8 @@ variable "hermes_agent_ip" {
   description = "IP address for the Hermes Agent standalone VM"
   type        = string
 }
+
+variable "data_store_ip" {
+  description = "IP address for the data-store (Garage S3) standalone VM"
+  type        = string
+}

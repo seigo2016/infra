@@ -1,0 +1,23 @@
+---
+# Example secrets file. Copy to vault.yml and encrypt with:
+#   ansible-vault encrypt ansible/group_vars/data-store/vault.yml
+#
+# Generate vault_garage_rpc_secret with:  openssl rand -hex 32
+# Generate vault_garage_admin_token with: openssl rand -hex 32
+# rclone crypt password & salt: any high-entropy strings; back up in 1Password.
+# vault_cloudflared_tunnel_token: from Cloudflare Zero Trust dashboard when
+# creating the data-store tunnel.
+# vault_cloudflare_dns_api_token: API token with Zone:DNS:Edit on seigo2016.com
+# only (used by Caddy for Let's Encrypt DNS-01).
+# vault_r2_*: from Cloudflare dashboard > R2 > Manage R2 API Tokens
+# (Object Read & Write, scoped to the data-store-backup bucket).
+
+vault_garage_rpc_secret: "REPLACE_ME_64_HEX_CHARS"
+vault_garage_admin_token: "REPLACE_ME_64_HEX_CHARS"
+vault_rclone_crypt_password: "REPLACE_ME_HIGH_ENTROPY"
+vault_rclone_crypt_salt: "REPLACE_ME_HIGH_ENTROPY"
+vault_cloudflared_tunnel_token: "REPLACE_ME_FROM_CLOUDFLARE_DASHBOARD"
+vault_cloudflare_dns_api_token: "REPLACE_ME_ZONE_DNS_EDIT_TOKEN"
+vault_r2_account_id: "REPLACE_ME_CLOUDFLARE_ACCOUNT_ID"
+vault_r2_access_key_id: "REPLACE_ME_R2_ACCESS_KEY"
+vault_r2_secret_access_key: "REPLACE_ME_R2_SECRET_KEY"

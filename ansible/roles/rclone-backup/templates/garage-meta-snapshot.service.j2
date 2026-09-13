@@ -1,0 +1,25 @@
+[Unit]
+Description=Nightly tar snapshot of Garage metadata DB
+After=garage.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '\
+  set -euo pipefail; \
+  ts=$(date +%%F); \
+  snap="{{ meta_snapshot_dir }}/meta-$${ts}.tar.gz"; \
+  tar -czf "$$snap" -C /var/lib/garage meta; \
+  /usr/bin/rclone --config {{ rclone_config_path }} copy "$$snap" \
+    {{ backup_crypt_remote }}:meta-snapshots/ \
+    --log-file /var/log/rclone-backup.log --log-level INFO; \
+  ls -1t {{ meta_snapshot_dir }}/meta-*.tar.gz | tail -n +$(({{ meta_snapshot_retention_count }} + 1)) | xargs -r rm -f; \
+  (/usr/bin/rclone --config {{ rclone_config_path }} lsf {{ backup_crypt_remote }}:meta-snapshots/ 2>/dev/null || true) | \
+  sort -r | tail -n +$(({{ meta_snapshot_retention_count }} + 1)) | \
+  while read -r f; do \
+    /usr/bin/rclone --config {{ rclone_config_path }} deletefile "{{ backup_crypt_remote }}:meta-snapshots/$$f" \
+      --log-file /var/log/rclone-backup.log --log-level INFO; \
+  done \
+'
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

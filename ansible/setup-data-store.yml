@@ -1,0 +1,67 @@
+---
+# Provisions the data-store VM: OS baseline + Garage S3 + cloudflared tunnel +
+# TLS termination (Caddy) + rclone backup to R2 (crypt). Idempotent — re-running is a no-op.
+
+- name: Apply OS baseline for data-store
+  hosts: data-store
+  remote_user: debian
+  become: yes
+
+  vars:
+    system_timezone: Asia/Tokyo
+
+  tasks:
+    - name: Read current timezone
+      ansible.builtin.command: timedatectl show -p Timezone --value
+      register: current_timezone
+      changed_when: false
+
+    - name: Set system timezone
+      ansible.builtin.command: "timedatectl set-timezone {{ system_timezone }}"
+      when: current_timezone.stdout != system_timezone
+
+    - name: Ensure systemd-timesyncd (NTP) is enabled
+      ansible.builtin.systemd_service:
+        name: systemd-timesyncd
+        enabled: yes
+        state: started
+
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+        update_cache: yes
+
+    - name: Enable automatic security upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+
+    - name: Install common base packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+          - gnupg
+          - lsb-release
+          - tar
+          - gzip
+          - jq
+        state: present
+
+- name: Provision Garage S3 + cloudflared + rclone backup
+  hosts: data-store
+  remote_user: debian
+  become: yes
+
+  roles:
+    - role: garage
+    - role: caddy
+    - role: cloudflared
+    - role: rclone-backup

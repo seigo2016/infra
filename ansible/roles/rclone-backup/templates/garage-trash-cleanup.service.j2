@@ -1,0 +1,18 @@
+[Unit]
+Description=Purge rclone backup trash directories older than {{ trash_retention_days }} days
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '\
+  set -euo pipefail; \
+  cutoff=$(date -d "{{ trash_retention_days }} days ago" +%%F); \
+  (/usr/bin/rclone --config {{ rclone_config_path }} lsf --dirs-only {{ backup_trash_path_template }} 2>/dev/null || true) | \
+  while read -r d; do \
+    d="$${d%%/}"; \
+    if [[ "$$d" < "$$cutoff" ]]; then \
+      /usr/bin/rclone --config {{ rclone_config_path }} purge "{{ backup_trash_path_template }}/$$d" \
+        --log-file /var/log/rclone-backup.log --log-level INFO; \
+    fi; \
+  done \
+'

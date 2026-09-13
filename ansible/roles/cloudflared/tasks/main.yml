@@ -1,0 +1,45 @@
+---
+- name: Ensure prerequisites for apt repository management
+  ansible.builtin.apt:
+    name:
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+
+- name: Add Cloudflare apt signing key
+  ansible.builtin.get_url:
+    url: "{{ cloudflared_repo_key_url }}"
+    dest: /usr/share/keyrings/cloudflare-main.gpg
+    mode: "0644"
+    force: no
+
+- name: Add cloudflared apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/cloudflared.list
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] {{ cloudflared_repo_url }} {{ ansible_distribution_release }} main
+
+- name: Install cloudflared
+  ansible.builtin.apt:
+    name: cloudflared
+    state: present
+    update_cache: yes
+
+- name: Check whether cloudflared service is already installed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/cloudflared.service
+  register: cloudflared_service_stat
+
+- name: Install cloudflared as systemd service with tunnel token
+  ansible.builtin.command: cloudflared service install {{ vault_cloudflared_tunnel_token }}
+  when: not cloudflared_service_stat.stat.exists
+  no_log: true
+
+- name: Ensure cloudflared is enabled and started
+  ansible.builtin.systemd_service:
+    name: cloudflared
+    enabled: yes
+    state: started

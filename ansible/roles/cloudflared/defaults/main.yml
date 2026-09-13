@@ -1,0 +1,7 @@
+---
+# cloudflared installs from Cloudflare's official Debian/Ubuntu repository.
+# Tunnel token (vault_cloudflared_tunnel_token) is registered via
+# `cloudflared service install <TOKEN>`, which writes the systemd unit and
+# stores credentials under /etc/cloudflared.
+cloudflared_repo_url: "https://pkg.cloudflare.com/cloudflared"
+cloudflared_repo_key_url: "https://pkg.cloudflare.com/cloudflare-main.gpg"

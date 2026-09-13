@@ -1,0 +1,31 @@
+metadata_dir = "{{ garage_meta_dir }}"
+data_dir = "{{ garage_data_dir }}"
+db_engine = "lmdb"
+
+replication_factor = {{ garage_replication_factor }}
+
+# Secrets are stored in separate files referenced by *_file directives.
+# Garage requires these files to not be world-readable; on this single-node VM
+# they live under /etc/garage with mode 0640. Because we use systemd
+# DynamicUser=true, the runtime UID is unpredictable, so we relax the check
+# with allow_world_readable_secrets and rely on filesystem ACLs / VM isolation.
+allow_world_readable_secrets = true
+
+rpc_bind_addr = "{{ garage_rpc_bind }}"
+rpc_public_addr = "{{ garage_rpc_bind }}"
+rpc_secret_file = "/etc/garage/rpc_secret"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "{{ garage_s3_bind }}"
+root_domain = ".s3.garage.localhost"
+
+[s3_web]
+bind_addr = "127.0.0.1:3902"
+root_domain = ".web.garage.localhost"
+index = "index.html"
+
+[admin]
+api_bind_addr = "{{ garage_admin_bind }}"
+admin_token_file = "/etc/garage/admin_token"
+metrics_token_file = "/etc/garage/metrics_token"

@@ -1,0 +1,23 @@
+[Unit]
+Description=Caddy TLS terminator for Garage S3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ caddy_user }}
+Group={{ caddy_group }}
+EnvironmentFile={{ caddy_config_dir }}/caddy.env
+Environment=XDG_DATA_HOME={{ caddy_data_dir }}
+Environment=XDG_CONFIG_HOME={{ caddy_data_dir }}
+ExecStart={{ caddy_bin }} run --config {{ caddy_config_dir }}/Caddyfile
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=1048576
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths={{ caddy_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

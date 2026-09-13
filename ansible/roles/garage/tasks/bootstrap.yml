@@ -1,0 +1,117 @@
+---
+# Idempotent bootstrap using the actual Garage v2.0.0 CLI surface:
+#   - `status` has no JSON mode; we parse the text table for the node id.
+#   - `layout assign -c` takes a size with B/KB/MB/GB/TB/PB suffix (not "T").
+#   - `layout apply --version N` requires N == current + 1.
+
+- name: Wait until garage RPC is ready and report node id
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml node id -q
+  register: garage_node_id_raw
+  changed_when: false
+  retries: 10
+  delay: 3
+  until: garage_node_id_raw.rc == 0
+
+- name: Extract full and short node id
+  ansible.builtin.set_fact:
+    garage_node_id: "{{ garage_node_id_raw.stdout | trim | split('@') | first }}"
+    garage_node_id_short: "{{ (garage_node_id_raw.stdout | trim | split('@') | first)[:16] }}"
+
+- name: Show current cluster layout
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml layout show
+  register: garage_layout_show
+  changed_when: false
+
+- name: Assign role to this node (stages a layout change)
+  # layout show prints only the 16-char short id; compare against that.
+  # Also skip if a stage is already pending for this node.
+  ansible.builtin.command:
+    cmd: >-
+      /usr/local/bin/garage -c /etc/garage.toml layout assign
+      -z {{ garage_zone }}
+      -c {{ garage_capacity }}
+      {{ garage_node_id }}
+  register: garage_layout_assign
+  changed_when: true
+  when: garage_node_id_short not in garage_layout_show.stdout
+
+- name: Re-read layout to find current and staged versions
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml layout show
+  register: garage_layout_show2
+  changed_when: false
+
+- name: Detect current layout version
+  ansible.builtin.set_fact:
+    garage_layout_current_version: >-
+      {{ (garage_layout_show2.stdout
+          | regex_search('Current cluster layout version:\s*(\d+)', '\1')
+          | first | int) }}
+    garage_layout_has_staged: >-
+      {{ 'STAGED ROLE CHANGES' in garage_layout_show2.stdout }}
+
+- name: Apply staged layout
+  ansible.builtin.command:
+    cmd: >-
+      /usr/local/bin/garage -c /etc/garage.toml layout apply
+      --version {{ garage_layout_current_version | int + 1 }}
+  register: garage_layout_apply
+  changed_when: true
+  when: garage_layout_has_staged | bool
+
+- name: List existing buckets
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml bucket list
+  register: garage_bucket_list
+  changed_when: false
+
+- name: Create bucket
+  # Compare whole tokens, not substrings: "dvc" is a substring of the legacy
+  # "depth-auth-dvc" alias and would false-positive with `in stdout`.
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml bucket create {{ garage_bucket }}
+  when: garage_bucket not in garage_bucket_list.stdout.split()
+  changed_when: true
+
+- name: List existing access keys
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml key list
+  register: garage_key_list
+  changed_when: false
+
+- name: Create access key
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml key create {{ garage_key_name }}
+  when: garage_key_name not in garage_key_list.stdout.split()
+  changed_when: true
+
+- name: Retrieve key info (with secret)
+  ansible.builtin.command:
+    cmd: /usr/local/bin/garage -c /etc/garage.toml key info --show-secret {{ garage_key_name }}
+  register: garage_key_info
+  changed_when: false
+  no_log: true
+
+- name: Persist Garage credentials to /root/.garage-credentials
+  ansible.builtin.copy:
+    dest: /root/.garage-credentials
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      # Garage access credentials for key '{{ garage_key_name }}'.
+      # Copy access_key_id and secret_access_key into each project's .dvc/config.local.
+      {{ garage_key_info.stdout }}
+  no_log: true
+
+- name: Grant bucket permissions to key
+  ansible.builtin.command:
+    cmd: >-
+      /usr/local/bin/garage -c /etc/garage.toml bucket allow
+      --read --write --owner
+      {{ garage_bucket }}
+      --key {{ garage_key_name }}
+  register: garage_bucket_allow
+  changed_when: "'New permissions' in garage_bucket_allow.stdout"
