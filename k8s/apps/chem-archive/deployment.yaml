@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chem-archive
+  namespace: chem-archive
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: chem-archive
+  template:
+    metadata:
+      labels:
+        app: chem-archive
+    spec:
+      serviceAccountName: chem-archive-sa
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: ghcr-registry-secret-chem-archive
+      envFrom:
+        - configMapRef:
+            name: chem-archive-env
+      containers:
+        - name: chemd
+          image: ghcr.io/seigo2016/chem-archive@sha256:136ce01b224bd9340c11bd83796683ca93cc164f16c59dbc2c03fa77e68e31b5
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 1
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 1
+          volumeMounts:
+            - name: runtime
+              mountPath: /app/runtime
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime
+          persistentVolumeClaim:
+            claimName: chem-archive-runtime
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
