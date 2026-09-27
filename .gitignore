@@ -5,4 +5,5 @@ terraform.tfstate.backup
 
 *.log
 .env
+__pycache__/
 ansible/group_vars/*/vault.yml

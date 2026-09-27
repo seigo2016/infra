@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chem-archive-env
+  namespace: chem-archive
+data:
+  CHEM_ADDR: ":8080"
+  CHEM_RUNTIME_DIR: "/app/runtime"
+  CHEM_STATIC_DIR: "/app/web/dist"
+  CHEM_FONT: "/app/internal/pdf/fonts/NotoSansJP.ttf"
+  CHEM_PUBLIC_BASE_URL: "https://chem.seigo2016.com"

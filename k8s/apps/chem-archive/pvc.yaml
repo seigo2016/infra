@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chem-archive-runtime
+  namespace: chem-archive
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 5Gi
