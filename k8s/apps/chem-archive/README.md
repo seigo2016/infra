@@ -82,22 +82,27 @@ Nothing in this list lives in this repository.
    the cluster nodes; another architecture produces `ErrImagePull`.
 2. **Vault role.** Kubernetes auth must be enabled at `kubernetes/`, and
    `chem-archive-role` must exist bound to `chem-archive-sa` in the `chem-archive`
-   namespace. The `system:auth-delegator` ClusterRole must be bound to that service
-   account in the `default` namespace; External Secrets Operator uses that binding
-   to mint the JWT Vault requires, and without it every sync fails.
+   namespace.
+
+   `auth/kubernetes/config` must **not** carry a `token_reviewer_jwt`. With a stored
+   reviewer JWT, Vault validates logins through the TokenReview API, and a stored
+   JWT expires on its own: this cluster reached ESO `Code: 403 permission denied` on
+   every sync for 151 days because of it, and the outage affected the unrelated
+   `ps2bot` and `release-bot` workloads too. Clear the field and leave
+   `disable_local_ca_jwt=false`, so Vault validates the presented service account JWT
+   against `kubernetes_ca_cert`. That path makes no Kubernetes API call and needs no
+   RBAC binding for `chem-archive-sa` or for the Vault server account. A
+   `system:auth-delegator` binding does not repair a stale reviewer JWT; it only
+   satisfies a reviewer token that is still valid.
 3. **Registry credentials.** `secret/chem-archive` must hold `github-username` and
    `github-token` as a dedicated classic PAT scoped `read:packages`, not a
    workstation token. The `{{ .github_username }}` and `{{ .github_token }}` strings
    in `registry-external-secret.yaml` are template placeholders, not credentials.
    No value belongs in this repository.
-4. **Application image.** No application CI, Dockerfile, or real digest is
-   committed anywhere yet. The local implementation is still to be pushed to a
-   private GitHub repository; once it is, CI is expected to publish only from
-   branch `web-native`, and only after approval. Until then there is no digest to
-   pin, so the placeholder in `deployment.yaml` and a failing deployable gate are
-   the expected state. Later digest updates are manual too: there is deliberately
-   no `ImageRepository` or `ImageUpdateAutomation` here, so Flux will not rewrite
-   the digest.
+4. **Application image.** `deployment.yaml` pins the published `linux/amd64` digest
+   from `seigo2016/chem-archive`. Application CI publishes to GHCR only on branch
+   `web-native`, and digest updates here stay manual: there is deliberately no
+   `ImageRepository` or `ImageUpdateAutomation`, so Flux will not rewrite the digest.
 
 ## Local gate
 
