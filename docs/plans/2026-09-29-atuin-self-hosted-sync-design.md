@@ -155,9 +155,8 @@ index digest を pin する。理由:
 
 ### A.2 セキュリティ強化
 
-イメージは `USER atuin`（uid 1000）で動作する。Longhorn PVC の root 所有を
-そのまま)$
-ると書けないため `fsGroup: 1000` + `fsGroupChangePolicy: OnRootMismatch`。
+イメージは `USER atuin`（uid 1000）で動作する。Longhorn PVC が root 所有の
+ままだと書けないため `fsGroup: 1000` + `fsGroupChangePolicy: OnRootMismatch`。
 
 `readOnlyRootFilesystem: true` + `drop: [ALL]` + `allowPrivilegeEscalation: false`。
 `atuin-server` は `/config`（→ `ATUIN_CONFIG_DIR`）にだけ書き込むので成立する。
@@ -166,7 +165,39 @@ probe は `/healthz` を使う（イメージの HEALTHCHECK と同じ）。
 readiness は tcpSocket、startup は httpGet `/healthz`（初回 migration
 考慮し `failureThreshold` を大きめに取る）。
 
-### A.3 クラスタ内 Ingress の平文区間
+### A.3 smoke test 実測結果（2026-09-29）
+
+Phase 1 の manifest を Flux に入れる前に、throwaway namespace
+（PSA `restricted` 同等ラベル + 同一 securityContext + emptyDir を `/config` に
+使用）で実 image を動かして検証した。結果はすべて期待どおり:
+
+| 項目 | 結果 |
+|---|---|
+| image pull / `atuin-server start` | 成功、Pod Ready |
+| コンテナ内 uid | `uid=1000(atuin) gid=1000(atuin)` |
+| `readOnlyRootFilesystem` | 問題なし（migration 完走） |
+| `GET /healthz` | `200` |
+| `GET /api/v0/capabilities` | JSON 返却（version + capabilities） |
+| `POST /register` | route 存在（`422 missing field email` = 到達、`404` ではない） |
+| `kubectl logs` | **0 行** |
+| `[metrics]` port 9001 | 待ち受けなし（既定で無効） |
+
+この実行から得られた計画への修正:
+
+1. **ログで migration 成功を判断できない。** `RUST_LOG=atuin_server=info` でも
+   出力 0 行。イメージ作者の既定 `RUST_LOG` と同じで、上流の挙動。
+   検証は `/config` のファイル生成と `/api/v0/capabilities` で行う。
+2. **WAL モードが有効**。`atuin.db-wal` / `atuin.db-shm` が生成される。
+   バックアップは `cp` ではなく `VACUUM INTO`。
+3. **`server.toml` は自動生成されるが全行コメントアウト**されたテンプレート。
+   設定は環境変数が勝つので実害はない。
+4. **route は `/api/v0/...` 系**。`/api/v1/...` は存在しない。実測した `router.rs`
+   の一覧を Task 4 Step 4 に記載。
+5. **`/tmp` は書き込み不可**（`readOnlyRootFilesystem` の帰結）。
+   バックアップ Job では emptyDir を `/tmp` に mount する。
+6. **イメージ内に `sqlite3` CLI は無い**。DB 操作 Job には別イメージが必要。
+
+### A.4 クラスタ内 Ingress の平文区間
 
 `[tls]` 廃止（0.3）の結果、**atuin-server ↔ cloudflared の区間は平文 HTTP**。
 Atuin のパスワードはこの区間を平文で飛ぶ。

@@ -68,6 +68,19 @@ Expected: `disable_local_ca_jwt` が `false`、`kubernetes_ca_cert` が設定済
   `disable_local_ca_jwt=false` のままにする」ことを依頼する。クラスタ側から
   俺は直せない。
 
+**結果（2026-09-29 実施）: 障害なし。**
+
+`vault-init` Secret が存在せず root token も pod env に入っていないため
+config を直接は読めなかった（読む必要もない）。代わりに ESO の観測可能な
+挙動で確認した:
+
+- ExternalSecret 6 件すべて `Ready=True` / `reason=SecretSynced`
+  （`chem-archive` 2 件、`ps2bot` 2 件、`release-bot` 2 件）
+- ESO controller ログに `403` / `permission denied` / `token_reviewer` なし
+- `chem-archive` の ESO Secret は 2026-09-28 に生成済み = 活発に同期している
+
+→ Vault の kubernetes auth は健全。Phase 2 を進める前提条件は満たされた。
+
 **Step 5: Commit**
 
 この Task は読み取りのみ。`git commit` はしない。
@@ -117,6 +130,13 @@ policy:
 > Flux の Kustomization は `prune: true`。この `keep` が無いと
 > `k8s/apps/atuin/` を Git から削除しただけで **SQLite データベースごと
 > 消える**。
+
+`ResourcePolicy` は Flux（kustomize-controller）だけが解釈する独自 kind で、
+API Server には存在しない。実測で `kubectl kustomize` の出力には含まれる
+ことを確認しているが、**`kubectl apply -k k8s/apps/atuin` は
+`no matches for kind "ResourcePolicy"` で失敗する**。適用は必ず Flux 経由
+で行う。手動検証したいときは ResourcePolicy を除いたファイルを `-f` で
+個別に dry-run する。
 
 **Step 3: `pvc.yaml` を作成**
 
@@ -367,17 +387,54 @@ Expected: `atuin-server-…` が `1/1 Running`。
 
 **Step 3: migration が成功していることを確認する（最重要）**
 
-Run: `kubectl -n atuin logs deploy/atuin-server | tail -30`
-Expected: schema migration 完了のログ、panic なし。
+⚠️ **ログを使ってはいけない。** 実測で `RUST_LOG=atuin_server=info` でも
+`kubectl logs` は **0 行**（イメージ作者の既定 `RUST_LOG` と同じ）。
+ログを根拠に migration 成功を判断する手順は成立しない。
 
 Run: `kubectl -n atuin exec deploy/atuin-server -- ls -l /config`
-Expected: `atuin.db` が `atuin:atuin` で存在（WAL ファイル、
-`atuin.db-wal`、`atuin.db-shm` も）。
+Expected: `atuin.db` が `atuin:atuin` で存在し、あわせて
+`atuin.db-wal` / `atuin.db-shm` / `server.toml` が見える。
 
-**Step 4: healthz を確認する**
+実測（v18.23.0、throwaway namespace で smoke test 済み）:
 
-Run: `kubectl -n atuin run healthz --rm -it --restart=Never --image=curlimages/curl:8.11.1 -- curl -sS -o /dev/null -w "%{http_code}\n" http://atuin-service.atuin.svc.cluster.local:8888/healthz`
-Expected: `200`。
+```
+-rw-r--r-- 1 atuin atuin   4096 atuin.db
+-rw-r--r-- 1 atuin atuin  32768 atuin.db-shm
+-rw-r--r-- 1 atuin atuin 255472 atuin.db-wal
+-rw-r--r-- 1 atuin atuin    661 server.toml
+```
+
+- **WAL モードが有効**（`-wal` / `-shm` が生成される）ことが確定。
+  Task 10 のバックアップで `cp` を禁じ `VACUUM INTO` を使う根拠。
+- `server.toml` は**全行コメントアウトされたテンプレート**で、実質設定は
+  環境変数が勝つ。実測で中身を確認済み。消失しても構わないが、
+  復元手順では db と並べて扱う。
+- イメージ内に `sqlite3` CLI は無い。DB を触る Job には別イメージが必要。
+
+**Step 4: capabilities を叩いてサーバが.Atuin と応答することを確認する**
+
+Route は 1 段 imperative（`router.rs` 実測）:
+
+| route | method |
+|---|---|
+| `/` | GET |
+| `/healthz` | GET |
+| `/register` | POST |
+| `/login` | POST |
+| `/api/v0/capabilities` | GET |
+| `/api/v0/record` | GET/POST |
+| `/api/v0/record/next` | GET |
+| `/api/v0/me` | GET |
+| `/api/v0/store` | DELETE |
+
+`/api/v1/...` は存在しない（`/api/v0/...` が正しい）。`path` 設定値を
+prefix にして全 route が nest される。
+
+Run: `kubectl -n atuin exec deploy/atuin-server -- curl -sS http://127.0.0.1:8888/api/v0/capabilities`
+Expected: `{"version":"...","capabilities":{"sh.atuin.server/capabilities":{"version":1},"sh.atuin.server/records.page_size":{"version":1,"page_size":100}}}`
+
+`/api/v0/capabilities` は認証不要なので、Access を経由しない cluster 内
+の生存確認として最適。
 
 ---
 ## Phase 2: 手作業（Cloudflare ダッシュボード + Vault）
@@ -722,6 +779,8 @@ spec:
                   readOnly: true
                 - name: backup
                   mountPath: /backup
+                - name: tmp
+                  mountPath: /tmp
           volumes:
             - name: data
               persistentVolumeClaim:
@@ -729,11 +788,18 @@ spec:
             - name: backup
               persistentVolumeClaim:
                 claimName: atuin-backup
+            - name: tmp
+              emptyDir: {}
 ```
 
-`cp` ではなく `VACUUM INTO` を使う。SQLite は WAL 書き込み中なので
-`cp` は不整合なスナップショットになる。`VACUUM INTO` は
-SQLite 3.27+ で一貫したコピーを作る。
+`cp` ではなく `VACUUM INTO` を使う。WAL 書き込み中（`-wal` / `-shm` が
+生成されることは実測済み）なので `cp` は不整合なスナップショットになる。
+`VACUUM INTO` は SQLite 3.27+ で一貫したコピーを作る。
+
+**`/tmp` の emptyDir は必須。** `readOnlyRootFilesystem: true` の Pod 内で
+`/tmp` に書き込もうとすると `curl: (23) Failure writing output to
+destination` で失敗することを実測した。`VACUUM INTO` も temp file を
+要するので、`/tmp` が書き込み可能でないと失敗する。
 
 **Step 3: `kustomization.yaml` に追加する**
 
