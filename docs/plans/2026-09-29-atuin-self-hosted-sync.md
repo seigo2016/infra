@@ -4,7 +4,7 @@
 
 **Goal:** 集群内に Atuin 同期サーバ（SQLite + Longhorn）を Flux でデプロイし、Cloudflare Tunnel / Access（Service Token）経由で、WSL2 + bash の各PCから WezTerm 経由で利用できるようにする。
 
-**Architecture:** `atuin` namespace に `atuin-server` Deployment 1 本（SQLite）+ ClusterIP Service + cloudflared Deployment 2 本 + 日次バックアップ CronJob。外部公開は新規 Tosc専用 Cloudflare Tunnel、認証は Access Service Token。Atuin クライアントの `extra_headers`（v18.18.0+）が token を送信する。
+**Architecture:** `atuin` namespace に `atuin-server` Deployment 1 本（SQLite）+ ClusterIP Service + cloudflared Deployment 2 本 + 日次バックアップ sidecar。外部公開は新規 Tosc専用 Cloudflare Tunnel、認証は Access Service Token。Atuin クライアントの `extra_headers`（v18.18.0+）が token を送信する。
 
 **Tech Stack:** Kubernetes / Flux v2.6.1 / Kustomize / Longhorn / External Secrets Operator + HashiCorp Vault / cloudflared / Atuin v18.23.0
 
@@ -693,12 +693,23 @@ git add k8s/apps/atuin
 git commit -m "feat: restrict atuin ingress to cloudflared connector"
 ```
 
-### Task 10: バックアップ CronJob を追加する
+### Task 10: バックアップを sidecar として追加する
 
 **Files:**
 - Create: `k8s/apps/atuin/backup-pvc.yaml`
-- Create: `k8s/apps/atuin/backup-cronjob.yaml`
+- Modify: `k8s/apps/atuin/deployment.yaml`
 - Modify: `k8s/apps/atuin/kustomization.yaml`
+
+初稿は独立 CronJob だったが **RWO マルチアタッチで却下**した。
+`atuin-data` は Longhorn `ReadWriteOnce` なので、**同一ノード上の Pod
+からは同時に mount できるが、別のノードからは
+`Multi-Attach error for volume ... : volume is already exclusively attached
+to one node` で失敗する**。2 ノード構成で node affinity を書かないと 5 分の 1
+の確率で backup が落ちる。両 Pod を同一ノードに固定すれば回避できるが、
+backup のために可用性を捨てることに相当する。
+
+atuin-server Pod の **sidecar コンテナ**なら常に同じノード・同じ PVC に
+アクセスできるので、個別スケジューリングが不要になる。
 
 **Step 1: `backup-pvc.yaml` を作成**
 
@@ -717,106 +728,125 @@ spec:
       storage: 20Gi
 ```
 
-**Step 2: `backup-cronjob.yaml` を作成**
+**Step 2: `deployment.yaml` に sidecar コンテナを追加する**
+
+atuin-server コンテナの `volumeMounts` の**後**に `backup` コンテナを挿入し、
+Pod レベルの `volumes` を 3 つへ置き換える。**以下のブロックは差し込み用の
+断片**であり、そのままでは YAML として成立しない（Deployment の一部のみ）:
 
 ```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: atuin-backup
-  namespace: atuin
-spec:
-  schedule: "17 3 * * *"
-  timeZone: Asia/Tokyo
-  concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  jobTemplate:
-    spec:
-      backoffLimit: 2
-      template:
-        metadata:
-          labels:
-            app: atuin-backup
-        spec:
-          restartPolicy: OnFailure
-          automountServiceAccountToken: false
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        - name: backup
+          image: alpine/sqlite:3.53.4@sha256:7d1599487ead0a5fe7399bb66c6803ae47b46bfa6a1e05db797d907796e4524d
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              while true; do
+                sleep 86400 &
+                wait $!
+                sqlite3 /config/atuin.db "VACUUM INTO '/backup/atuin-$(date +%F).db'" || true
+                find /backup -name 'atuin-*.db' -type f -mtime +7 -delete || true
+              done
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 65532
-            runAsGroup: 65532
-            fsGroup: 65532
-            seccompProfile:
-              type: RuntimeDefault
-          containers:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
             - name: backup
-              image: alpine/sqlite:3.53.4@sha256:7d1599487ead0a5fe7399bb66c6803ae47b46bfa6a1e05db797d907796e4524d
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  set -eu
-                  d=/backup
-                  mkdir -p "$d"
-                  sqlite3 /data/atuin.db "VACUUM INTO '$d/atuin-$(date +%F).db'"
-                  find "$d" -name 'atuin-*.db' -type f -mtime +7 -delete
-              securityContext:
-                allowPrivilegeEscalation: false
-                readOnlyRootFilesystem: true
-                capabilities:
-                  drop:
-                    - ALL
-              resources:
-                requests:
-                  cpu: 50m
-                  memory: 64Mi
-                limits:
-                  cpu: 500m
-                  memory: 512Mi
-              volumeMounts:
-                - name: data
-                  mountPath: /data
-                  readOnly: true
-                - name: backup
-                  mountPath: /backup
-                - name: tmp
-                  mountPath: /tmp
-          volumes:
-            - name: data
-              persistentVolumeClaim:
-                claimName: atuin-data
-            - name: backup
-              persistentVolumeClaim:
-                claimName: atuin-backup
+              mountPath: /backup
             - name: tmp
-              emptyDir: {}
+              mountPath: /tmp
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: atuin-data
+        - name: backup
+          persistentVolumeClaim:
+            claimName: atuin-backup
+        - name: tmp
+          emptyDir: {}
 ```
 
-`cp` ではなく `VACUUM INTO` を使う。WAL 書き込み中（`-wal` / `-shm` が
-生成されることは実測済み）なので `cp` は不整合なスナップショットになる。
-`VACUUM INTO` は SQLite 3.27+ で一貫したコピーを作る。
+ポイント:
 
-**`/tmp` の emptyDir は必須。** `readOnlyRootFilesystem: true` の Pod 内で
-`/tmp` に書き込もうとすると `curl: (23) Failure writing output to
-destination` で失敗することを実測した。`VACUUM INTO` も temp file を
-要するので、`/tmp` が書き込み可能でないと失敗する。
+- `cp` ではなく `VACUUM INTO`。**WAL が有効**（`-wal` / `-shm` が生成される
+  ことは実測済み）なので `cp` は不整合なスナップショットになる。
+- `/tmp` の emptyDir は**必須**。`readOnlyRootFilesystem: true` の Pod 内で
+  `/tmp` に書き込もうとすると `curl: (23) Failure writing output to
+  destination` で失敗することを実測した。`VACUUM INTO` も temp file を
+  要する。
+- `command:` でイメージの `ENTRYPOINT ["sqlite3"]` を上書きする。
+- `|| true` 2 つが必須。同日 2 回目の実行で
+  `output file already exists`（実測）になるが、`date +%F` の命名なので
+  ループを落とさず翌日リトライされる。
+- `alpine/sqlite:3.53.4` の image config は実測済み: `ENTRYPOINT ["sqlite3"]`、
+  `apk add sqlite` 済み、User 指定なし（manifest の `runAsUser: 65532` が効く）。
 
-**Step 3: `kustomization.yaml` に追加する**
+**Step 3: ローカルで backup ロジックを実証する**
+
+cluster を触らずに確認できる。
+
+Run:
+```bash
+mkdir -p sb/config sb/backup
+python3 -c "
+import sqlite3
+c=sqlite3.connect('sb/config/atuin.db')
+c.execute('PRAGMA journal_mode=WAL')
+c.execute('CREATE TABLE h(id INTEGER PRIMARY KEY, cmd TEXT)')
+c.executemany('INSERT INTO h(cmd) VALUES(?)',[(f'cmd {i}',) for i in range(2000)])
+c.commit()"
+sh -c 'sqlite3 sb/config/atuin.db "VACUUM INTO '"'"'sb/backup/atuin-$(date +%F).db'"'"'"'
+python3 -c "
+import sqlite3
+s=sqlite3.connect('sb/backup/atuin-$(date +%F).db')
+print(s.execute('SELECT count(*) FROM h').fetchone()[0])
+print(s.execute('PRAGMA integrity_check').fetchone()[0])"
+```
+Expected: `2000` / `ok`。**WAL ファイルなしで read-only open できる**ことが
+「復旧時に必要なのは .db 1 個だけ」の根拠になる。
+
+実測結果（2026-09-30、ローカル）:
+
+| 項目 | 結果 |
+|---|---|
+| WAL 2000 行 → `VACUUM INTO` | 成功、90KB の単独ファイル |
+| snapshot を WAL 無しで read-only open | 2000 行 / `integrity_check: ok` |
+| ソース db | 影響なし（2000 行 / `integrity_check: ok`） |
+| 同日 2 回目 | `output file already exists`（`|| true` で無害） |
+| ループ継続 | 3 回連続実行しても停止しない |
+
+**Step 4: `kustomization.yaml` に追加する**
 
 ```yaml
   - backup-pvc.yaml
-  - backup-cronjob.yaml
 ```
 
-**Step 4: Commit**
+`backup-cronjob.yaml` は作らない。
+
+**Step 5: Commit**
 
 ```
 git add k8s/apps/atuin
-git commit -m "feat: add daily sqlite backup cronjob for atuin"
+git commit -m "feat: add daily sqlite vacuum-into backup as sidecar"
 ```
 
 ---
-## Phase 4: デプロイと検証
 
 ### Task 11: tunnel 経由の Access fail-closed 検証
 
@@ -916,33 +946,48 @@ Expected: 登録が失敗する（サーバが 403/400 を返す）。
 
 ### Task 14: バックアップと復旧をテストする
 
-**Step 1: CronJob を手動で起動する**
+sidecar は起動直後に 1 回 backup してから 24 時間周期になるので、
+デプロイ直後に 1 個目のスナップショットが生成されている。
 
-Run: `kubectl -n atuin create job --from=cronjob/atuin-backup backup-test-1`
-Expected: Job が `Complete`。
+**Step 1: sidecar が動いていることを確認する**
 
-Run: `kubectl -n atuin logs job/backup-test-1`
-Expected: エラーなし。
+Run: `kubectl -n atuin get pod -l app=atuin -o jsonpath='{.items[0].status.containerStatuses[*].name}'; echo`
+Expected: `atuin-server backup` の 2 つ。
+
+Run: `kubectl -n atuin logs deploy/atuin-server -c backup`
+Expected: エラー出力なし（正常時は何も出さない）。
 
 **Step 2: スナップショットが存在することを確認する**
 
-Run: `kubectl -n atuin run backup-ls --rm -it --restart=Never --image=alpine:3.22 -- ls -l /backup`
-Expected: `atuin-<今日>.db` が存在。
+Run: `kubectl -n atuin exec deploy/atuin-server -c backup -- ls -l /backup`
+Expected: `atuin-<今日>.db` が存在（WAL ファイル `atuin.db-wal` /
+`atuin.db-shm` を含まないこと。`VACUUM INTO` の出力は単独ファイル）。
 
-**Step 3: 復旧手順を wiki 化できる形で確認する**
+Run: `kubectl -n atuin exec deploy/atuin-server -c backup -- sqlite3 /backup/atuin-$(date +%F).db "PRAGMA integrity_check"`
+Expected: `ok`
 
-復旧手順（Longhorn 上で直接行う）:
+**Step 3: 2 日目の実行でも壊れないことを確認する（任意）**
 
-(1) `atuin-backup` PVC を新しい Pod に mount して `/backup/atuin-<日付>.db` を取り出す
-(2) `atuin-data` の `/config/atuin.db` を退避
-(3) 取り出した `.db` を `atuin-data` の `/config/atuin.db` に配置して
-    owner を 1000:1000 にする
-(4) `kubectl -n atuin rollout restart deploy/atuin-server`
-(5) `/healthz` と `atuin sync` で確認
+2 回目が `output file already exists` で失敗してもループは停止しない
+（`|| true`）ことを local 実測済み。cluster で待つ意味はないのでスキップ可。
 
-実際は Longhorn の namespace 内でコンテナを起動して cp する方が安全。
+**Step 4: 復旧手順を確定する**
 
-**Step 4: documentation に復旧 runbook を書く（Task 15 に含む）**
+復旧は Longhorn namespace 内で行う（RWO の制約により別ノードから
+`atuin-data` を mount できないため）。
+
+(1) `kubectl -n longhorn-system scale deploy/longhorn-manager --replicas=0`
+     snapshot を使い、gutter は使わない:
+    Longhorn UI (Service `longhorn-frontend`) から `atuin-backup` の
+    snapshot を作成 → `atuin-data` の復元
+(2) 復元後 `longhorn-manager` を 1 に戻す
+(3) `kubectl -n atuin rollout restart deploy/atuin-server`
+(4) `/healthz` と `atuin sync` で確認
+
+`atuin-backup` PVC 内の `.db` ファイルはそれ自体で完全な快照なので、
+snapshot が取れなくても `cp` で取り出せる（Task 10 Step 3 の local 実証済み）。
+
+**Step 5: documentation に復旧 runbook を書く（Task 15 に含む）**
 
 ### Task 15: ドキュメントを書く
 

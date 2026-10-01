@@ -285,10 +285,44 @@ extra_headers = { "CF-Access-Client-Id" = "<id>", "CF-Access-Client-Secret" = "<
 Phase 1 では**新しいネットワーク経路や新しい資格情報をクラスタに持ち込まず**、
 2つ目の Longhorn PVC へ日次スナップショットを落とす方式にする:
 
-- CronJob が `VACUUM INTO` で `.db` を整合した状態で複製する
-  （WAL 中の `cp` は不可）。
+- `VACUUM INTO` で `.db` を整合した状態で複製する（WAL 中の `cp` は不可）。
 - 保持 7 日、`find -mtime +7 -delete` でプルーン。
 - `sqlite3` CLI 同梱の `alpine/sqlite:3.53.4` を digest pin で使う。
+
+### D.1 実行主体は CronJob ではなく sidecar
+
+初稿は独立 CronJob だったが、**RWO マルチアタッチの問題で却下**した。
+
+`atuin-data` は Longhorn の `ReadWriteOnce` で、**同一ノード上的 Pod からは
+同時に mount できる**。別 Pod の CronJob が別のノードにスケジュールされると
+
+```
+Multi-Attach error for volume pvc-... : volume is already exclusively attached to one node
+```
+
+で失敗する。2 ノード構成で node affinity を書かないと 5 分の 1 の確率で
+backup が落ちる。両 Pod を同じノードに固定すれば回避できるが、それは
+バックアップのために可用性を捨てる相当于である。
+
+そこで **atuin-server Pod の sidecar コンテナ**で実行する。同一 Pod なので
+常に同じノード・同じ PVC にアクセスでき、別途スケジュールする必要もない。
+代償は sidecar が常に居る（32Mi リクエスト）ことだけ。
+
+### D.2 実測（local、2026-09-30）
+
+同じ shell をローカルで実行して確認した:
+
+| 項目 | 結果 |
+|---|---|
+| WAL 2000 行の db → `VACUUM INTO` | 成功、90KB の単独ファイル |
+| snapshot を **WAL 無しで** read-only open | 2000 行 / `integrity_check: ok` |
+| ソース db | 影響なし（2000 行 / `integrity_check: ok`） |
+| 同日 2 回目 | `output file already exists` を stderr に出すが無害（`|| true`） |
+| ループ継続 | 3 回連続実行してもループは停止しない |
+
+`alpine/sqlite:3.53.4` の image config も確認した:
+`ENTRYPOINT ["sqlite3"]`（manifest の `command:` が上書きする）、
+`apk add sqlite` 済み、User 指定なし（manifest の `runAsUser: 65532` が効く）。
 
 R2 へのオフロードは Phase 4 の任意課題とする（その時点で R2 資格情報を
 Vault 経由でクラスタに配る判断が要るため、別計画に分ける）。
