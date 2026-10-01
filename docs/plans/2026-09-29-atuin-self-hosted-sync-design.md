@@ -202,12 +202,43 @@ Phase 1 の manifest を Flux に入れる前に、throwaway namespace
 `[tls]` 廃止（0.3）の結果、**atuin-server ↔ cloudflared の区間は平文 HTTP**。
 Atuin のパスワードはこの区間を平文で飛ぶ。
 
-対策として NetworkPolicy を置き、atuin-server への ingress を
-`app: cloudflared` の Pod のみに限定する。cloudflared は edge 側で TLS を
-終端するため、Internet に出る区間は暗号化される。
+cloudflared は Cloudflare edge 側で TLS を終端するため、**Internet に
+出る区間は常に暗号化**される。平文なのはクラスタ内部の
+`atuin-server` ⇄ `cloudflared` 間だけで、これは同一ノード／同一
+Pod ネットワーク上の通信である。
 
-`deploy/chem-archive-poc` の README が定める「Access must be fail-closed」
-の判定条件もそのまま適用する。
+### A.5 NetworkPolicy は置かない（実測で無効と判明）
+
+初稿では ingress を `app: cloudflared` のみに限定する NetworkPolicy を
+置いていたが、**このクラスタでは強制されない**と実測した。
+
+CNI は **flannel**（`/etc/cni/net.d/10-flannel.conflist`、`cbr0`、
+hairpinMode）。標準の flannel は NetworkPolicy エンジンを持たない。
+
+実証（`deny-all` Ingress policy を張った状態で別 Pod から接続）:
+
+```
+$ kubectl exec -n np-test b -- /agnhost connect --timeout 5s <a-pod-ip>:8080
+RESULT exit=0        ← 成功している = 遮断されていない
+```
+
+副証拠として `iptables-save | grep '^:KUBE-NEWPOLICY'` が 0 件
+（kubelet sync-loop が NetworkPolicy がある namespace だけ作る chain）。
+
+したがって NetworkPolicy は**セキュリティ境界として機能せず、
+誤解を招くだけ**なので削除した。flannel に policy プラグイン
+（kube-router / Calico / Cilium）を入れるのはクラスタ全体の
+CNI 差し替えになるため、別計画とする。
+
+、平文区間は以下で担保する:
+
+- `atuin-service` は ClusterIP で、namespace 外からは到達できない
+- 同一 namespace 内の Pod からのみアクセス可能（flannel の L3 分離）
+- Access は fail-closed で構成し、`deploy/chem-archive-poc` の README が
+  定める判定条件をそのまま適用する
+
+なお Atuin は**履歴をクライアント側で暗号化**する。サーバが平文で受け取る
+のはパスワードとデータ暗号で、历史本文は平文ではない。
 
 ## B. 公開経路: Tunnel + Access
 
@@ -334,7 +365,7 @@ SQLite がボトルネックになったら移行する。 quantitative な目�
 - `atuin-server` の CPU 使用率が常用で 500m を超える、または
 - PVC の I/O wait が常態化する、または
 - 履歴データ量が 5Gi PVC の 70% を超える、または
-- クライアント 수가 10 端末を超え sync が遅延する
+- クライアント数が 10 端末を超え sync が遅延する
 
 移行時は:
 

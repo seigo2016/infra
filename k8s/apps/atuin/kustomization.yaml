@@ -10,5 +10,4 @@ resources:
   - secret-store.yaml
   - tunnel-external-secret.yaml
   - cloudflared-deployment.yaml
-  - networkpolicy.yaml
   - backup-pvc.yaml

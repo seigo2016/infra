@@ -646,52 +646,34 @@ git add k8s/apps/atuin
 git commit -m "feat: expose atuin through cloudflare tunnel connector"
 ```
 
-### Task 9: NetworkPolicy で平文区間を塞ぐ
+### Task 9: ~~NetworkPolicy で平文区間を塞ぐ~~ → 撤回（Task 3 で実測）
 
-**Files:**
-- Create: `k8s/apps/atuin/networkpolicy.yaml`
-- Modify: `k8s/apps/atuin/kustomization.yaml`
+初稿はこの Task で NetworkPolicy を作成したが、**このクラスタでは強制され
+ない**と Phase 1 の検証中に判明したため撤回した（Task 3 Step 6 参照）。
+`networkpolicy.yaml` は作らない。
 
-Atuin の組み込み `[tls]` は削除済みなので、`atuin-server` ↔ cloudflared の
-区間は**平文 HTTP**（パスワードが平文で飛ぶ）。ingress を cloudflared Pod
-だけに限定する。
+理由は 2 点:
 
-**Step 1: `networkpolicy.yaml` を作成**
+1. **flannel には NetworkPolicy エンジンがない。** `/etc/cni/net.d/` は
+   `10-flannel.conflist`（`cbr0`、hairpinMode）。実測でも deny-all policy
+   下でも Pod 間通信は成功した。
+2. **誤解を招く。** 「ingress を限定している」と読むと、実環境では
+    何も限定されていない。セキュリティ境界として機能しないものは
+   置かない。
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: atuin-allow-tunnel-only
-  namespace: atuin
-spec:
-  podSelector:
-    matchLabels:
-      app: atuin
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: cloudflared
-      ports:
-        - protocol: TCP
-          port: 8888
-```
+クラスタ内平文区間の担保は以下で行う（いずれも追加コストなし）:
 
-**Step 2: `kustomization.yaml` に追加する**
+- `atuin-service` は ClusterIP で、namespace 外からは到達できない
+- flannel の L3 分離により、同一 namespace 内の Pod からのみ
+- Access を fail-closed に構成し、fail-open なら即座に hostname を外す
 
-```yaml
-  - networkpolicy.yaml
-```
+なお Atuin は履歴を**クライアント側で暗号化**するため、サーバが平文で受け
+受け取るのはパスワードと暗号化されたデータであり、歴史本文ではない。
 
-**Step 3: Commit**
+flannel に policy プラグイン（kube-router / Calico / Cilero）を入れる
+場合はクラスタ全体の CNI 差し替えになるため、**別計画**とする。
 
-```
-git add k8s/apps/atuin
-git commit -m "feat: restrict atuin ingress to cloudflared connector"
-```
+---
 
 ### Task 10: バックアップを sidecar として追加する
 
