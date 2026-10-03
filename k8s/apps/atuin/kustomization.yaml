@@ -9,4 +9,3 @@ resources:
   - secret-store.yaml
   - tunnel-external-secret.yaml
   - cloudflared-deployment.yaml
-  - backup-pvc.yaml
