@@ -85,11 +85,12 @@ spec:
             - -c
             - |
               set -eu
+              mkdir -p /config/backup
               while true; do
                 sleep 86400 &
                 wait $!
-                sqlite3 /config/atuin.db "VACUUM INTO '/backup/atuin-$(date +%F).db'" || true
-                find /backup -name 'atuin-*.db' -type f -mtime +7 -delete || true
+                sqlite3 /config/atuin.db "VACUUM INTO '/config/backup/atuin-$(date +%F).db'" || true
+                find /config/backup -name 'atuin-*.db' -type f -mtime +7 -delete || true
               done
           securityContext:
             allowPrivilegeEscalation: false
@@ -107,16 +108,11 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: backup
-              mountPath: /backup
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: atuin-data
-        - name: backup
-          persistentVolumeClaim:
-            claimName: atuin-backup
         - name: tmp
           emptyDir: {}
