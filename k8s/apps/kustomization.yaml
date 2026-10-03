@@ -9,3 +9,4 @@ resources:
   - ./ps2bot
   - ./release-bot
   - ./chem-archive
+  - ./atuin
