@@ -23,7 +23,7 @@ spec:
   interval: 10m0s
   path: ./k8s/flux
   prune: true
-  wait: true
+  wait: false
   timeout: 5m0s
   retryInterval: 1m0s
   sourceRef:
