@@ -39,7 +39,7 @@ spec:
             - name: ATUIN_DB_URI
               value: sqlite:///config/atuin.db
             - name: ATUIN_OPEN_REGISTRATION
-              value: "true"
+              value: "false"
             - name: RUST_LOG
               value: atuin_server=info
           ports:
