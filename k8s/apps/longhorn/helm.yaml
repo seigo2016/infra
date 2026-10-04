@@ -22,3 +22,16 @@ spec:
         kind: HelmRepository
         name: longhorn-repo
         namespace: flux-system
+  values:
+    global:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+    persistence:
+      defaultClassReplicaCount: 2
+    defaultSettings:
+      taintToleration: node-role.kubernetes.io/control-plane:NoSchedule
+      defaultReplicaCount:
+        v1: "2"
+        v2: "2"
