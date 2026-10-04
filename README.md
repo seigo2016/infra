@@ -85,3 +85,24 @@ ssh -L 8080:127.0.0.1:8080 -J ss debian@"$TF_VAR_hermes_agent_ip"
 新しい MCP server を追加する時は `ansible/setup-mcp-servers.yml` の
 `mcp_servers` リストに 1 エントリ追加し、`hermes-agent` repo の
 `docs/standards/port-allocation.md` から空き port を割当てる。
+
+## Kubernetes クラスタ運用
+
+クラスタの構成・運用手順・未対応作業は [`docs/`](docs/) に集約している。
+README には複製せず、参照だけを残す。
+
+| ファイル | 内容 |
+|---|---|
+| [`docs/README.md`](docs/README.md) | クラスタ全体の構成、よく使う確認コマンド |
+| [`docs/known-issues.md`](docs/known-issues.md) | 未対応作業の一覧 |
+| [`docs/standards/longhorn.md`](docs/standards/longhorn.md) | Longhorn の現構成と保守作業の手順 |
+| [`docs/standards/vault.md`](docs/standards/vault.md) | Vault / ESO の unseal 手順 |
+| [`docs/standards/k8s-cert-renewal.md`](docs/standards/k8s-cert-renewal.md) | kubeadm 証明書の期限切れとクラスタ全断からの復旧 |
+
+kubeadm のリーフ証明書は**有効期限1年**で、切れるとクラスタが全断する。
+定期的に確認すること。
+
+```bash
+ssh k8s-master 'sudo kubeadm certs check-expiration'
+```
+
