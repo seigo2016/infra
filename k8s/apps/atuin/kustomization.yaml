@@ -9,3 +9,8 @@ resources:
   - secret-store.yaml
   - tunnel-external-secret.yaml
   - cloudflared-deployment.yaml
+configMapGenerator:
+  - name: atuin-backup-script
+    namespace: atuin
+    files:
+      - backup.sh

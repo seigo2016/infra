@@ -82,16 +82,7 @@ spec:
           image: alpine/sqlite:3.53.4@sha256:7d1599487ead0a5fe7399bb66c6803ae47b46bfa6a1e05db797d907796e4524d
           command:
             - /bin/sh
-            - -c
-            - |
-              set -eu
-              mkdir -p /config/backup
-              while true; do
-                sleep 86400 &
-                wait $!
-                sqlite3 /config/atuin.db "VACUUM INTO '/config/backup/atuin-$(date +%F).db'" || true
-                find /config/backup -name 'atuin-*.db' -type f -mtime +7 -delete || true
-              done
+            - /scripts/backup.sh
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -110,9 +101,15 @@ spec:
               mountPath: /config
             - name: tmp
               mountPath: /tmp
+            - name: backup-script
+              mountPath: /scripts
+              readOnly: true
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: atuin-data
         - name: tmp
           emptyDir: {}
+        - name: backup-script
+          configMap:
+            name: atuin-backup-script
