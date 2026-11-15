@@ -4,12 +4,17 @@ terraform {
   required_providers {
     proxmox = {
       source  = "Telmate/proxmox"
-      version = "3.0.1-rc9"
+      version = "3.0.2-rc10"
     }
   }
 }
 
 resource "proxmox_vm_qemu" "hermes_agent" {
+  # The template is used when creating a VM, not to update an existing one.
+  lifecycle {
+    ignore_changes = [clone]
+  }
+
   name        = var.vm_name
   target_node = var.proxmox_node
   clone       = var.template_vm_base
@@ -21,11 +26,18 @@ resource "proxmox_vm_qemu" "hermes_agent" {
     sockets = var.sockets
   }
 
-  memory   = var.memory
-  agent    = 1
-  onboot   = true
-  scsihw   = "virtio-scsi-pci"
-  bootdisk = "scsi0"
+  memory             = var.memory
+  agent              = 1
+  start_at_node_boot = true
+  scsihw             = "virtio-scsi-pci"
+  boot               = "order=scsi0"
+  power_state        = "running"
+
+  startup_shutdown {
+    order            = -1
+    startup_delay    = -1
+    shutdown_timeout = -1
+  }
 
   disks {
     scsi {
