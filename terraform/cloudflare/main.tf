@@ -25,6 +25,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "research_ops" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.research_ops.id
 
+  # Route traffic only once Access guards the hostname.
+  depends_on = [cloudflare_zero_trust_access_application.research_ops]
+
   config = {
     ingress = [
       {
@@ -51,6 +54,8 @@ resource "cloudflare_dns_record" "research_ops" {
   proxied = true
   ttl     = 1
   comment = "research-ops Control Plane (Cloudflare Tunnel). Managed by terraform/cloudflare."
+
+  depends_on = [cloudflare_zero_trust_access_application.research_ops]
 }
 
 resource "cloudflare_zero_trust_access_service_token" "research_ops" {
