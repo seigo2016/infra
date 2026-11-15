@@ -1,0 +1,2 @@
+# Python 3.12 or newer; compatible with Debian 13's Python 3.13 on managed nodes.
+ansible-core==2.21.6

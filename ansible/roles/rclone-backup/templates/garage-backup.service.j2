@@ -1,0 +1,22 @@
+[Unit]
+Description=Weekly immutable rclone copy of Garage bucket to encrypted Cloudflare R2
+After=network-online.target garage.service
+Wants=network-online.target
+Requires=garage.service
+
+[Service]
+Type=oneshot
+StateDirectory=garage-backup
+StateDirectoryMode=0700
+ExecStart=/bin/bash -c '/usr/bin/rclone --config {{ rclone_config_path }} copy \
+  garage-s3:{{ garage_bucket }} \
+  {{ backup_dest_path }} \
+  --immutable \
+  --transfers 8 \
+  --fast-list \
+  --log-file /var/log/rclone-backup.log \
+  --log-level INFO'
+ExecStartPost=/usr/bin/touch /var/lib/garage-backup/last-success
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

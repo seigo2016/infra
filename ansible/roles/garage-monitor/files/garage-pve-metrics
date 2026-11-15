@@ -1,0 +1,65 @@
+#!/usr/bin/python3
+import json
+import os
+import ssl
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+
+CONFIG = Path('/etc/garage-monitor/pve.json')
+DIRECTORY = Path('/var/lib/prometheus/node-exporter')
+
+
+def format_metrics(pools, storage, now, pool_name='rpool'):
+    matched = [pool for pool in pools if pool.get('name') == pool_name]
+    if len(matched) != 1 or not storage.get('active'):
+        raise ValueError('pool or storage unavailable')
+    total, available = int(storage['total']), int(storage['avail'])
+    if total <= 0 or available < 0 or available > total:
+        raise ValueError('invalid storage capacity')
+    healthy = int(matched[0].get('health') == 'ONLINE')
+    return (f'garage_pve_zpool_healthy {healthy}\n'
+            f'garage_pve_storage_total_bytes {total}\n'
+            f'garage_pve_storage_available_bytes {available}\n'
+            f'garage_pve_last_success_timestamp_seconds {int(now)}\n')
+
+
+def make_context(cafile):
+    context = ssl.create_default_context(cafile=cafile)
+    # The Proxmox-generated CA lacks keyUsage, rejected by Python 3.13 strict mode.
+    # Keep CA-chain and hostname verification enabled.
+    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return context
+
+
+def main():
+    config = json.loads(CONFIG.read_text())
+    context = make_context('/etc/garage-monitor/pve-ca.pem')
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
+    base_url = config.get('api_url', 'https://172.16.0.200:8006').rstrip('/')
+    if not base_url.startswith('https://'):
+        raise ValueError('Proxmox API must use HTTPS')
+    node = config.get('node', 'pve')
+    storage = config.get('storage', 'local-zfs')
+
+    def get(path):
+        request = urllib.request.Request(base_url + '/api2/json' + path,
+                                         headers={'Authorization': 'PVEAPIToken=' + config['token']})
+        with opener.open(request, timeout=15) as response:
+            return json.load(response)['data']
+
+    metrics = format_metrics(get(f'/nodes/{node}/disks/zfs'), get(f'/nodes/{node}/storage/{storage}/status'), time.time(), config.get('pool', 'rpool'))
+    fd, filename = tempfile.mkstemp(prefix='.garage-pve.', dir=DIRECTORY)
+    try:
+        with os.fdopen(fd, 'w') as out:
+            out.write(metrics)
+        os.chmod(filename, 0o644)
+        os.replace(filename, DIRECTORY / 'garage-pve.prom')
+    finally:
+        if os.path.exists(filename):
+            os.unlink(filename)
+
+
+if __name__ == '__main__':
+    main()

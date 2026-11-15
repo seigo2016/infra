@@ -1,0 +1,11 @@
+---
+- name: Restart node exporter
+  ansible.builtin.systemd_service:
+    name: prometheus-node-exporter
+    state: restarted
+  when: not ansible_check_mode
+
+- name: Reload systemd for metrics timer
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode

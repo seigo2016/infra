@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Proxmox storage monitoring
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=garage-pve-metrics.service
+
+[Install]
+WantedBy=timers.target

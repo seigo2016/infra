@@ -1,0 +1,5 @@
+---
+# Public, non-secret variables for the data-store host group.
+# Secrets live in vault.yml (ansible-vault encrypted).
+
+system_timezone: Asia/Tokyo
