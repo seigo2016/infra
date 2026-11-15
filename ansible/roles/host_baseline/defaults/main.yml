@@ -1,0 +1,14 @@
+---
+# Generic Debian baseline for standalone VMs (the same steps data-store runs
+# inline, without hermes' Python 3.11 assertion).
+system_timezone: Asia/Tokyo
+host_baseline_packages:
+  - acl # lets become_user switch to unprivileged users such as postgres
+  - curl
+  - ca-certificates
+  - gnupg
+  - jq
+  - qemu-guest-agent
+  - tar
+  - gzip
+  - unzip

@@ -1,0 +1,76 @@
+---
+- name: Validate PostgreSQL arguments
+  ansible.builtin.assert:
+    that:
+      - not (postgresql_archive_enabled | bool) or (postgresql_archive_command | length > 0)
+      - postgresql_databases | map(attribute='password') | reject('match', '^[A-Za-z0-9]{32,}$') | list | length == 0
+    fail_msg: >-
+      Archiving needs postgresql_archive_command, and every database password
+      must be at least 32 alphanumeric characters (openssl rand -hex 32).
+  no_log: true
+
+- name: Install apt repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian # required by deb822_repository
+    state: present
+    update_cache: true
+
+- name: Add the PGDG apt repository
+  ansible.builtin.deb822_repository:
+    name: pgdg
+    types: deb
+    uris: "{{ postgresql_pgdg_uri }}"
+    suites: "{{ ansible_facts['distribution_release'] }}-pgdg"
+    components: main
+    signed_by: "{{ postgresql_pgdg_key_url }}"
+  register: postgresql_pgdg_repo
+
+- name: Install PostgreSQL {{ postgresql_version }}
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ postgresql_version }}"
+      - "postgresql-client-{{ postgresql_version }}"
+    state: present
+    update_cache: "{{ postgresql_pgdg_repo is changed }}"
+
+- name: Render PostgreSQL settings
+  ansible.builtin.template:
+    src: managed.conf.j2
+    dest: "{{ postgresql_conf_dir }}/conf.d/10-managed.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: Restart postgresql
+
+- name: Apply PostgreSQL settings
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure PostgreSQL is enabled and started
+  ansible.builtin.systemd_service:
+    name: "{{ postgresql_unit }}"
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Create login roles and databases
+  ansible.builtin.command:
+    argv: [psql, -X, -q, -v, ON_ERROR_STOP=1, -d, postgres]
+    stdin: |
+      \set role '{{ item.owner }}'
+      \set db '{{ item.name }}'
+      \set password '{{ item.password }}'
+      SELECT format('CREATE ROLE %I LOGIN', :'role')
+        WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
+      ALTER ROLE :"role" WITH LOGIN PASSWORD :'password';
+      SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'role')
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db') \gexec
+  become: true
+  become_user: postgres
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+  no_log: true
+  when: not ansible_check_mode

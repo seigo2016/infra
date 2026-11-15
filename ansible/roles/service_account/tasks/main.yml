@@ -1,0 +1,29 @@
+---
+- name: Validate service account arguments
+  ansible.builtin.assert:
+    that:
+      - service_account_name is defined and service_account_name | length > 0
+      - service_account_home is defined and service_account_home is match('^/')
+    fail_msg: service_account requires service_account_name and an absolute service_account_home.
+
+- name: "Create group {{ service_account_group }}"
+  ansible.builtin.group:
+    name: "{{ service_account_group }}"
+    system: true
+
+- name: "Create system user {{ service_account_name }} (no login shell)"
+  ansible.builtin.user:
+    name: "{{ service_account_name }}"
+    group: "{{ service_account_group }}"
+    home: "{{ service_account_home }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+
+- name: Restrict the service home
+  ansible.builtin.file:
+    path: "{{ service_account_home }}"
+    state: directory
+    owner: "{{ service_account_name }}"
+    group: "{{ service_account_group }}"
+    mode: "0750"

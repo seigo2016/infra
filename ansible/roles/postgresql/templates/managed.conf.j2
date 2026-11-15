@@ -1,0 +1,12 @@
+# Managed by Ansible (role postgresql). Loaded through Debian's conf.d include.
+listen_addresses = '{{ postgresql_listen_addresses }}'
+port = {{ postgresql_port }}
+password_encryption = scram-sha-256
+wal_level = replica
+{% if postgresql_archive_enabled | bool %}
+archive_mode = on
+archive_command = '{{ postgresql_archive_command }}'
+archive_timeout = {{ postgresql_archive_timeout }}
+{% else %}
+archive_mode = off
+{% endif %}
