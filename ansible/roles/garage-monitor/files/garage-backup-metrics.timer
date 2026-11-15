@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Garage backup monitoring timestamp
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=garage-backup-metrics.service
+
+[Install]
+WantedBy=timers.target

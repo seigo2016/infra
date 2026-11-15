@@ -1,10 +1,23 @@
 .worktrees/
+.venv-ansible/
 
 .terraform/
 .terraform.lock.hcl
+!terraform/prod/.terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
 
 *.log
 .env
 __pycache__/
+ansible/group_vars/*/vault.yml
+
+# Secrets and local state (never commit)
+*.tfstate
+*.tfstate.*
+.venv*/
+pve.json
+*.pem
+*.key
+id_rsa*
+id_ed25519*

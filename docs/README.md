@@ -34,6 +34,8 @@ $K get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" taints="}{.spec.ta
 | [`standards/longhorn.md`](standards/longhorn.md) | Longhorn の現構成と、detach と manager 再起動が必要な保守作業の手順 |
 | [`standards/vault.md`](standards/vault.md) | Vault / ESO の unseal 手順と状態確認 |
 | [`standards/k8s-cert-renewal.md`](standards/k8s-cert-renewal.md) | kubeadm 証明書の期限切れとクラスタ全断からの復旧 |
+| [`standards/data-store-restore.md`](standards/data-store-restore.md) | Garage と R2 からの復元 |
+| [`standards/data-store-debian-upgrade.md`](standards/data-store-debian-upgrade.md) | data-store の Debian 更新時の確認事項 |
 
 ## よく使う確認コマンド
 

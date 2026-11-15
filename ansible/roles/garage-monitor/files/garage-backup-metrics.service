@@ -1,0 +1,6 @@
+[Unit]
+Description=Publish last successful Garage backup timestamp
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/garage-backup-metrics

@@ -1,0 +1,15 @@
+name = "garage-monitor"
+main = "worker.mjs"
+compatibility_date = "2026-11-03"
+workers_dev = false
+
+[vars]
+METRICS_URL = "https://garage-monitor.seigo2016.com/metrics"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "garage-monitor"
+database_id = "79a5d371-5afb-4486-992f-d3e85449509b"
+
+[triggers]
+crons = ["*/5 * * * *"]

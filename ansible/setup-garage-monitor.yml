@@ -1,0 +1,7 @@
+---
+- name: Configure Garage monitoring metrics
+  hosts: data-store
+  remote_user: debian
+  become: true
+  roles:
+    - garage-monitor

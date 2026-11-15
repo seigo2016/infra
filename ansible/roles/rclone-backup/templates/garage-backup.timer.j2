@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly garage-backup timer
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=30m
+Unit=garage-backup.service
+
+[Install]
+WantedBy=timers.target

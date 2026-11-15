@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+marker=${1:-/var/lib/garage-backup/last-success}
+directory=${2:-/var/lib/prometheus/node-exporter}
+destination="$directory/garage-backup.prom"
+if [[ ! -f "$marker" ]]; then
+  rm -f -- "$destination"
+  exit 0
+fi
+timestamp=$(stat -c %Y -- "$marker")
+temporary=$(mktemp "$directory/.garage-backup.XXXXXXXX")
+trap 'rm -f -- "$temporary"' EXIT
+printf '# HELP garage_backup_last_success_timestamp_seconds Time of last successful R2 backup.\n# TYPE garage_backup_last_success_timestamp_seconds gauge\ngarage_backup_last_success_timestamp_seconds %s\n' "$timestamp" > "$temporary"
+chmod 0644 "$temporary"
+mv -f -- "$temporary" "$destination"

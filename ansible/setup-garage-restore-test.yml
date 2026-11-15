@@ -1,0 +1,37 @@
+---
+# Isolated restore VM only. No Cloudflare connector or scheduled backup.
+- name: Prepare an isolated Garage restore test
+  hosts: garage-restore-test
+  remote_user: debian
+  become: true
+
+  vars:
+    backup_timers_enabled: false
+
+  pre_tasks:
+    - name: Check for explicit restore test marker
+      ansible.builtin.stat:
+        path: /etc/garage-restore-test-target
+      register: restore_test_marker
+
+    - name: Check for an existing Cloudflare connector
+      ansible.builtin.stat:
+        path: /etc/systemd/system/cloudflared.service
+      register: restore_cloudflared_unit
+
+    - name: Refuse hosts with Cloudflare Tunnel installed
+      ansible.builtin.assert:
+        that:
+          - not restore_cloudflared_unit.stat.exists
+        fail_msg: This playbook requires a separate VM without the production Tunnel.
+
+    - name: Require an explicitly marked restore test VM
+      ansible.builtin.assert:
+        that:
+          - restore_test_marker.stat.exists
+          - not (backup_timers_enabled | bool)
+        fail_msg: Mark the isolated test VM and keep its backup timer disabled.
+
+  roles:
+    - role: garage
+    - role: rclone-backup
