@@ -1,0 +1,83 @@
+---
+# Provisions the research-ops Control Plane VM: OS baseline, PostgreSQL 18
+# (PGDG) with WAL archiving to pgBackRest on R2, the weekly pg_dump copy,
+# the API and engine as hardened Bun units, the Cloudflare Tunnel connector
+# and localhost-only backup metrics. Idempotent.
+#
+#   .venv-ansible/bin/ansible-playbook -i ansible/inventory.research-ops-cp.yml \
+#     ansible/setup-research-ops-cp.yml --ask-vault-pass
+#
+# Backup timers stay as they are unless -e backup_timers_enabled=true|false.
+# On a rebuilt VM run ansible/restore-research-ops-cp.yml first
+# (docs/standards/research-ops-cp-restore.md).
+- name: Provision the research-ops Control Plane
+  hosts: research-ops-cp
+  remote_user: debian
+  become: true
+
+  pre_tasks:
+    - name: Refuse the restore rehearsal VM
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['hostname'] == 'research-ops-cp'
+        fail_msg: >-
+          This host reports hostname {{ ansible_facts['hostname'] }}; the
+          production playbook only runs on research-ops-cp.
+
+  roles:
+    - role: host_baseline
+    - role: service_account
+      vars:
+        service_account_name: "{{ research_ops_user }}"
+        service_account_home: "{{ research_ops_home }}"
+    - role: postgresql
+    - role: pgbackrest
+    - role: pg_dump_backup
+    - role: research_ops_release
+    - role: bun_service
+      vars:
+        bun_service_name: research-ops-api
+        bun_service_description: research-ops Control Plane API
+        bun_service_user: "{{ research_ops_user }}"
+        bun_service_workdir: "{{ research_ops_current_dir }}"
+        bun_service_entrypoint: apps/api/src/main.ts
+        bun_service_environment:
+          CP_PORT: "{{ research_ops_api_port }}"
+        bun_service_environment_files: ["{{ research_ops_env_file }}"]
+        bun_service_after: [network-online.target, "{{ postgresql_unit }}"]
+        bun_service_requires: ["{{ postgresql_unit }}"]
+        bun_service_enabled: "{{ research_ops_api_enabled }}"
+        bun_service_restart: "{{ research_ops_release_changed | default(false) }}"
+    - role: bun_service
+      vars:
+        bun_service_name: research-ops-engine
+        bun_service_description: research-ops Control Plane engine (dispatch, outbox, reconciler)
+        bun_service_user: "{{ research_ops_user }}"
+        bun_service_workdir: "{{ research_ops_current_dir }}"
+        bun_service_entrypoint: apps/engine/src/main.ts
+        bun_service_environment:
+          CP_ENGINE_ID: research-ops-cp
+          CP_RUNNER_DIR: /var/lib/research-ops-engine
+        bun_service_environment_files: ["{{ research_ops_env_file }}"]
+        bun_service_state_directory: research-ops-engine
+        bun_service_after: [network-online.target, "{{ postgresql_unit }}"]
+        bun_service_requires: ["{{ postgresql_unit }}"]
+        bun_service_skip_if_exists: "{{ research_ops_dispatch_suspended_marker }}"
+        bun_service_enabled: "{{ research_ops_engine_enabled }}"
+        bun_service_restart: "{{ research_ops_release_changed | default(false) }}"
+    - role: cloudflared
+    - role: postgres_backup_monitor
+
+  post_tasks:
+    - name: Check whether dispatch is suspended
+      ansible.builtin.stat:
+        path: "{{ research_ops_dispatch_suspended_marker }}"
+      register: research_ops_dispatch_marker
+
+    - name: Report suspended dispatch
+      ansible.builtin.debug:
+        msg: >-
+          {{ research_ops_dispatch_suspended_marker }} exists, so
+          research-ops-engine does not start. Remove it after reconciliation
+          (docs/standards/research-ops-cp-restore.md).
+      when: research_ops_dispatch_marker.stat.exists

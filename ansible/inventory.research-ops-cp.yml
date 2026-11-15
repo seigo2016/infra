@@ -1,0 +1,25 @@
+# research-ops Control Plane and its restore rehearsal VM. Every site value
+# comes from the environment (.env), so the same inventory works on another
+# Proxmox host:
+#   TF_VAR_research_ops_cp_ip, TF_VAR_research_ops_cp_restore_test_ip
+#   SSH_PRIVATE_KEY_PATH (default ~/.ssh/id_ed25519_k8s)
+#   ANSIBLE_JUMP_HOST    (default ss; set to "none" to connect directly)
+all:
+  vars:
+    ansible_user: debian
+    ansible_ssh_private_key_file: "{{ lookup('env', 'SSH_PRIVATE_KEY_PATH') | default('~/.ssh/id_ed25519_k8s', true) }}"
+    research_ops_jump_host: "{{ lookup('env', 'ANSIBLE_JUMP_HOST') | default('ss', true) }}"
+    ansible_ssh_common_args: >-
+      {{ '' if research_ops_jump_host == 'none' else '-o ProxyJump=' ~ research_ops_jump_host }}
+      -o StrictHostKeyChecking=accept-new
+  children:
+    research-ops-cp:
+      hosts:
+        research-ops-cp:
+          ansible_host: "{{ lookup('env', 'TF_VAR_research_ops_cp_ip') }}"
+    # Never a child of research-ops-cp: plays for the production group must
+    # not reach the rehearsal VM, and the other way round.
+    research-ops-cp-restore-test:
+      hosts:
+        research-ops-cp-restore-test:
+          ansible_host: "{{ lookup('env', 'TF_VAR_research_ops_cp_restore_test_ip') }}"

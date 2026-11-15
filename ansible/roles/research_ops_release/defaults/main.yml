@@ -1,0 +1,20 @@
+---
+# Delivers one pinned commit of the research-ops Control Plane to the VM.
+# The source is a local clone on the machine that runs Ansible (the app
+# repository is private, so the VM holds no Git credentials):
+#   export RESEARCH_OPS_REPO=/path/to/research-ops
+research_ops_src_repo: "{{ lookup('env', 'RESEARCH_OPS_REPO') }}"
+research_ops_git_version: ""    # full commit SHA, set in group_vars
+research_ops_app_subdir: control-plane
+
+research_ops_user: research-ops
+research_ops_home: /opt/research-ops
+research_ops_release_dir: "{{ research_ops_home }}/releases/{{ research_ops_git_version }}"
+research_ops_current_dir: "{{ research_ops_home }}/current"
+
+research_ops_config_dir: /etc/research-ops
+research_ops_env_file: "{{ research_ops_config_dir }}/database.env"
+research_ops_database_url: ""   # secret; built in group_vars from the vault
+
+# Units stopped while a new release is migrated.
+research_ops_units: [research-ops-api, research-ops-engine]
