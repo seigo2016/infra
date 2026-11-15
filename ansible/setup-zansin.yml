@@ -1,0 +1,118 @@
+---
+- name: Setup ZANSIN Environment
+  hosts: zansin
+  become: yes
+  vars_files:
+    - ./group_vars/all.yml
+
+  tasks:
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+      tags: system
+
+    - name: Install required system packages
+      apt:
+        name: "{{ required_packages }}"
+        state: present
+      tags: system
+
+    - name: Install Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+      tags: docker
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/debian
+        state: present
+        filename: docker
+      tags: docker
+
+    - name: Add zansin user to docker group
+      user:
+        name: "{{ zansin_user }}"
+        groups: docker
+        append: yes
+      tags: system
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+      tags: docker
+
+    - name: Configure SSH for password authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication yes'
+        backup: yes
+      notify: restart ssh
+      tags: ssh
+
+    - name: Ensure zansin user has sudo privileges
+      lineinfile:
+        path: /etc/sudoers
+        line: "{{ zansin_user }} ALL=(ALL) NOPASSWD:ALL"
+        validate: '/usr/sbin/visudo -cf %s'
+      tags: system
+
+  handlers:
+    - name: restart ssh
+      systemd:
+        name: ssh
+        state: restarted
+
+- name: Setup ZANSIN on Control Server
+  hosts: zansin_control
+  become: no
+  vars_files:
+    - ./group_vars/all.yml
+  
+  tasks:
+    - name: Clone ZANSIN repository
+      git:
+        repo: "{{ zansin_repo_url }}"
+        dest: "{{ zansin_home }}/ZANSIN"
+        force: yes
+      tags: zansin
+
+    - name: Make zansin.sh executable
+      file:
+        path: "{{ zansin_home }}/ZANSIN/zansin.sh"
+        mode: '0755'
+      tags: zansin
+
+    - name: Run ZANSIN automated setup
+      shell: |
+        cd {{ zansin_home }}/ZANSIN
+        echo -e "{{ training_server_ip }}\n{{ control_server_ip }}\n{{ ssh_password }}" | ./zansin.sh
+      args:
+        creates: "{{ zansin_home }}/ZANSIN/.setup_complete"
+      register: zansin_setup
+      tags: zansin
+
+    - name: Mark setup as complete
+      file:
+        path: "{{ zansin_home }}/ZANSIN/.setup_complete"
+        state: touch
+      when: zansin_setup.changed
+      tags: zansin
+
+    - name: Display setup completion message
+      debug:
+        msg: |
+          ZANSIN setup completed successfully!
+          
+          Control Server: {{ control_server_ip }}
+          Training Server: {{ training_server_ip }}
+          SSH User: {{ zansin_user }}
+          
+          You can now access the ZANSIN environment:
+          ssh {{ zansin_user }}@{{ control_server_ip }}
+          cd ~/ZANSIN
+      tags: zansin

@@ -1,0 +1,23 @@
+zansin:
+  hosts:
+    zansin-control:
+      ansible_host: "{{ lookup('env','TF_VAR_control_ip') }}"
+      ansible_user: "{{ lookup('env','TF_VAR_ssh_user') | default('zansin', true) }}"
+      # ansible_ssh_pass: "{{ lookup('env','TF_VAR_ssh_password') | default('', true) }}"
+      ansible_ssh_private_key_file: "~/.ssh/id_ed25519_k8s"
+      ansible_python_interpreter: /usr/bin/python3
+    zansin-training:
+      ansible_host: "{{ lookup('env','TF_VAR_training_ip') }}"
+      ansible_user: "{{ lookup('env','TF_VAR_ssh_user') | default('zansin', true) }}"
+      # ansible_ssh_pass: "{{ lookup('env','TF_VAR_ssh_password') | default('', true) }}"
+      ansible_ssh_private_key_file: "~/.ssh/id_ed25519_k8s"
+      ansible_python_interpreter: /usr/bin/python3
+
+zansin_control:
+  hosts:
+    zansin-control:
+
+zansin_training:
+  hosts:
+    zansin-training:
+
