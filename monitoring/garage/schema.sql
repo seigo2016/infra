@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS monitor_state (
+  name TEXT PRIMARY KEY,
+  failures INTEGER NOT NULL DEFAULT 0,
+  notified INTEGER NOT NULL DEFAULT 0
+);
