@@ -34,6 +34,22 @@ export TF_VAR_network_prefix="24"
 export TF_VAR_gateway="192.168.1.1"
 ```
 
+### research-ops Control Plane
+
+専用 VM `research-ops-cp` に API、engine、PostgreSQL 18 を置き、Cloudflare Tunnel と
+Access で `research-ops.seigo2016.com` に公開する。Cloudflare 側は `terraform/cloudflare`、
+VM は `terraform/prod/research-ops-cp.tf`、ホストは `ansible/setup-research-ops-cp.yml`。
+バックアップは pgBackRest と週 1 回の `pg_dump` を R2 に送る。
+
+```bash
+export TF_VAR_research_ops_cp_ip="192.168.1.120"
+export TF_VAR_cloudflare_api_token="..."   # terraform/cloudflare 用
+export TF_VAR_cloudflare_account_id="..."
+export TF_VAR_cloudflare_zone_id="..."
+```
+
+手順は [`docs/standards/research-ops-cp-restore.md`](docs/standards/research-ops-cp-restore.md)。
+
 ### Hermes Agent プロビジョニング
 
 `ansible/setup-hermes.yml` は NousResearch/hermes-agent を標準 VM に導入する。
@@ -98,6 +114,7 @@ README には複製せず、参照だけを残す。
 | [`docs/standards/longhorn.md`](docs/standards/longhorn.md) | Longhorn の現構成と保守作業の手順 |
 | [`docs/standards/vault.md`](docs/standards/vault.md) | Vault / ESO の unseal 手順 |
 | [`docs/standards/k8s-cert-renewal.md`](docs/standards/k8s-cert-renewal.md) | kubeadm 証明書の期限切れとクラスタ全断からの復旧 |
+| [`docs/standards/research-ops-cp-restore.md`](docs/standards/research-ops-cp-restore.md) | research-ops Control Plane の構築、バックアップ、復元 |
 
 kubeadm のリーフ証明書は**有効期限1年**で、切れるとクラスタが全断する。
 定期的に確認すること。

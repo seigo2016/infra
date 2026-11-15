@@ -29,6 +29,43 @@ git 履歴と merged PR に残っているので、ここには載せない。
   復元時は `backup_timers_enabled=false` を明示し、復元完了後に有効化する。
 - 復元手順は [`standards/data-store-restore.md`](standards/data-store-restore.md)。
 
+## research-ops Control Plane（`research-ops-cp`）
+
+コードは揃ったが、まだ apply も playbook も流していない。
+手順は [`standards/research-ops-cp-restore.md`](standards/research-ops-cp-restore.md)。
+
+- **未検証の前提。** 初回の構築と復元の試験で確かめる。
+  - pgBackRest と R2 の組み合わせ（S3 互換、`repo1-s3-uri-style=path`、region `auto`）。
+  - Bun の unit が、この hardening（`SystemCallFilter=@system-service`、
+    `ProtectSystem=strict` など）の下で動くか。
+    `systemd-analyze security research-ops-api` でも見る。
+  - `npm ci` で lockfile の Bun が入ること。Debian 13 の nodejs と npm で足りるか。
+  - Cloudflare provider 5.28.1 での plan。オフラインでは `terraform fmt` しか通していない。
+  - Proxmox の cloud-init が VM 名をホスト名にすること。復元の試験の隔離はこれに頼る。
+  - Cloudflare の応答の打ち切り（約 100 秒）。long-poll は 60 秒以内で返す前提。
+- **API にまだ認証がない。** WS1 の API は `x-actor-id` を信じるだけで、ホストごとの
+  Bridge 認証（RFC §8）がない。今は Access のサービストークンが唯一の門。Bridge を
+  つなぐ前に API 側で実装する。
+- **engine は FakeRunner だけ。** WS1 の engine は `CP_RUNNER_DIR` の FakeRunner しか
+  持たない。本物の runner が入るまで、本番で dispatch させる仕事はない。
+- **Control Plane の epoch がスキーマにない。** 復元の dry-run は `lease_epoch` の
+  締め出しを数えるだけで、epoch は `NOT RUN` と出す。epoch と、Bridge の journal との
+  突き合わせのコマンドを research-ops 側に作り、復元の playbook から呼ぶ。
+- **監視は VM の中まで。** node_exporter（`127.0.0.1:9100`）はバックアップと WAL の
+  指標を出すが、Tunnel の経路も Worker もない。garage-monitor の Worker を 2 つ目の
+  対象に広げ、最後の backup と WAL の遅れの閾値で Discord に知らせる。
+- **復元の試験は手で始める。** 月 1 回の目安で、VM の作成から playbook までを
+  人が流す。別の物理ホストでの初回の試験も残っている。
+- **ダッシュボードの入口。** Access は今サービストークンだけを通す。PI がブラウザで
+  使う SPA ができたら、identity の policy を足す。
+- **既存への展開。** data-store は OS の baseline を inline で持ち、`host_baseline`
+  role を使っていない。data-store と hermes の VM も `standalone-vm` モジュールに
+  寄せられるが、state の移動（`moved`）が要るので今はしない。
+- **pg_dump の crypt の鍵。** rclone-backup のような、既存の鍵との不一致を検出する
+  仕組みはない。鍵を変えると古いダンプは新しい設定では読めない。
+- Terraform の state は prod と同じくローカル（`terraform/cloudflare/terraform.tfstate`）。
+  Tunnel token とサービストークンの秘密を含むので、Git に入れず暗号化して保管する。
+
 ## Proxmox の Terraform provider
 
 当面は Telmate を使う。3.0.2-rc10 への設定名の移行（`onboot` → `start_at_node_boot`、
