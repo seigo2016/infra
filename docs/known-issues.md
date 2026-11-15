@@ -35,25 +35,32 @@ git 履歴と merged PR に残っているので、ここには載せない。
 手順は [`standards/research-ops-cp-restore.md`](standards/research-ops-cp-restore.md)。
 
 - **未検証の前提。** 初回の構築と復元の試験で確かめる。
-  - pgBackRest と R2 の組み合わせ（S3 互換、`repo1-s3-uri-style=path`、region `auto`）。
+  - pgBackRest と R2 の組み合わせ（S3 互換、`repo1-s3-uri-style=path`、region `auto`）と、
+    読み取り専用の R2 鍵で `info`、`restore`、`archive-get` が通ること。
+    pgBackRest 2.60.0 の挙動（`--archive-mode=off` で復元したクラスタが WAL を送らない、
+    別のクラスタからの `stanza-create` と `archive-push` を拒む、`already exists` の文言、
+    `info` の JSON）は、手元の PostgreSQL 18 と posix の repository で確かめた。
   - Bun の unit が、この hardening（`SystemCallFilter=@system-service`、
     `ProtectSystem=strict` など）の下で動くか。
     `systemd-analyze security research-ops-api` でも見る。
   - `npm ci` で lockfile の Bun が入ること。Debian 13 の nodejs と npm で足りるか。
   - Cloudflare provider 5.28.1 での plan。オフラインでは `terraform fmt` しか通していない。
   - Proxmox の cloud-init が VM 名をホスト名にすること。復元の試験の隔離はこれに頼る。
+  - Cloudflare の API トークンの権限の名前（ダッシュボードの表記と合っているか）。
   - Cloudflare の応答の打ち切り（約 100 秒）。long-poll は 60 秒以内で返す前提。
-- **API にまだ認証がない。** WS1 の API は `x-actor-id` を信じるだけで、ホストごとの
-  Bridge 認証（RFC §8）がない。今は Access のサービストークンが唯一の門。Bridge を
-  つなぐ前に API 側で実装する。
-- **engine は FakeRunner だけ。** WS1 の engine は `CP_RUNNER_DIR` の FakeRunner しか
-  持たない。本物の runner が入るまで、本番で dispatch させる仕事はない。
+- **Bridge のホストごとの認証は API 側でまだない。** 今の門は Access のサービス
+  トークンだけ。Bridge をつなぐ前に、Control Plane がホストごとの資格を発行して
+  取り消せるようにする。
+- **engine はまだ本物の runner を持たない。** 本番で dispatch させる仕事はまだない。
 - **Control Plane の epoch がスキーマにない。** 復元の dry-run は `lease_epoch` の
   締め出しを数えるだけで、epoch は `NOT RUN` と出す。epoch と、Bridge の journal との
   突き合わせのコマンドを research-ops 側に作り、復元の playbook から呼ぶ。
 - **監視は VM の中まで。** node_exporter（`127.0.0.1:9100`）はバックアップと WAL の
   指標を出すが、Tunnel の経路も Worker もない。garage-monitor の Worker を 2 つ目の
   対象に広げ、最後の backup と WAL の遅れの閾値で Discord に知らせる。
+- **秘密の投入のほかに、ホストで手で行う操作が 2 つ残る。** 初回の full backup の起動と、
+  復元の後の `/etc/research-ops-dispatch-suspended` の削除（突き合わせの後）。
+  必要なら playbook の明示的なフラグにする。
 - **復元の試験は手で始める。** 月 1 回の目安で、VM の作成から playbook までを
   人が流す。別の物理ホストでの初回の試験も残っている。
 - **ダッシュボードの入口。** Access は今サービストークンだけを通す。PI がブラウザで
