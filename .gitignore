@@ -4,6 +4,7 @@
 .terraform/
 .terraform.lock.hcl
 !terraform/prod/.terraform.lock.hcl
+!terraform/cloudflare/.terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
 
