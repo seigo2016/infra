@@ -31,16 +31,15 @@ git 履歴と merged PR に残っているので、ここには載せない。
 
 ## Proxmox の Terraform provider
 
-当面は Telmate を使う。3.0.2-rc10 で plan は通るが、既存 4 VM の更新差分は
-apply 前に検証する。非推奨だった `onboot` は `start_at_node_boot` に変更済み。
-設定名移行と電源状態の差分を表示する。provider は既定で必要時に自動再起動するため、
+当面は Telmate を使う。3.0.2-rc10 への設定名の移行（`onboot` → `start_at_node_boot`、
+`vm_state` → `power_state`、`desc` → `description`）は既存 4 VM に apply 済みで、
+再起動はなく、plan は差分なし。provider は既定で必要時に自動再起動するため、
 Garage への送信中は apply しない。
 
 Debian 13 の `Debian13CloudInitAgent`（VMID 9003）を別途作成し、クローンの SSH と
 guest agent を確認した。共有クローン元の単純な変更は既存 4 VM の再作成を招くため、
 各 VM の `clone` に `ignore_changes` を設定し、新規作成用のテンプレートを切り替えた。
 plan は既存 4 VM の更新のみで、再作成はない。既存 VM の OS はこの設定では更新されない。
-Terraform の本番 apply は他の差分の検証を終えるまで保留。
 新テンプレートのクローンでは cloud-init が完了するが、Proxmox の生成設定にある
 非推奨の `user` 指定によって `degraded done` を報告する。実害と対応方法は未確認。
 
