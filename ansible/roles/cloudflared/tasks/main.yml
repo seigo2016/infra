@@ -34,7 +34,7 @@
   register: cloudflared_service_stat
 
 - name: Install cloudflared as systemd service with tunnel token
-  ansible.builtin.command: cloudflared service install {{ vault_cloudflared_tunnel_token }}
+  ansible.builtin.command: cloudflared service install {{ cloudflared_tunnel_token }}
   when: not cloudflared_service_stat.stat.exists
   no_log: true
 
