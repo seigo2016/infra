@@ -1,0 +1,15 @@
+[Unit]
+Description=Weekly pg_dump of {{ pg_dump_backup_database }} to encrypted Cloudflare R2
+After=network-online.target {{ postgresql_unit }}
+Wants=network-online.target
+Requires={{ postgresql_unit }}
+
+[Service]
+Type=oneshot
+StateDirectory={{ pg_dump_backup_state_dir | basename }}
+StateDirectoryMode=0700
+ExecStart=/usr/local/sbin/pg-dump-backup {{ pg_dump_backup_config_path }} {{ pg_dump_backup_crypt_remote }}: {{ pg_dump_backup_database }} {{ pg_dump_backup_retention_days }}
+ExecStartPost=/usr/bin/touch {{ pg_dump_backup_state_dir }}/last-success
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

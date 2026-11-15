@@ -1,0 +1,18 @@
+[Unit]
+Description=pgBackRest {{ item }} backup of stanza {{ pgbackrest_stanza }} to R2
+After=network-online.target {{ postgresql_unit }}
+Wants=network-online.target
+Requires={{ postgresql_unit }}
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+StateDirectory={{ pgbackrest_state_dir | basename }}
+StateDirectoryMode=0750
+ExecStartPre=/usr/local/sbin/pgbackrest-backup-manifest {{ pgbackrest_manifest_source_database }} {{ pgbackrest_manifest_database }}
+ExecStart=/usr/bin/pgbackrest --stanza={{ pgbackrest_stanza }} --type={{ item }} backup
+ExecStartPost=/usr/bin/touch {{ pgbackrest_state_dir }}/last-success-{{ item }}
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

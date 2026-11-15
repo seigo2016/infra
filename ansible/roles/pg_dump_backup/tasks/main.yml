@@ -1,0 +1,75 @@
+---
+- name: Validate pg_dump backup arguments
+  ansible.builtin.assert:
+    that:
+      - pg_dump_backup_database | length > 0
+      - pg_dump_backup_bucket | length > 0
+      - "'REPLACE_ME' not in pg_dump_backup_crypt_password"
+      - "'REPLACE_ME' not in pg_dump_backup_crypt_salt"
+    fail_msg: Set pg_dump_backup_database, pg_dump_backup_bucket and real crypt values in the vault.
+  no_log: true
+
+- name: Create pg_dump backup config directory
+  ansible.builtin.file:
+    path: "{{ pg_dump_backup_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Obscure pg_dump crypt password
+  ansible.builtin.command:
+    argv: [rclone, obscure, '-']
+    stdin: "{{ pg_dump_backup_crypt_password }}"
+  register: pg_dump_backup_crypt_password_obscured
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Obscure pg_dump crypt salt
+  ansible.builtin.command:
+    argv: [rclone, obscure, '-']
+    stdin: "{{ pg_dump_backup_crypt_salt }}"
+  register: pg_dump_backup_crypt_salt_obscured
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Render pg_dump rclone configuration
+  ansible.builtin.template:
+    src: rclone.conf.j2
+    dest: "{{ pg_dump_backup_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install pg_dump backup script
+  ansible.builtin.copy:
+    src: pg-dump-backup
+    dest: /usr/local/sbin/pg-dump-backup
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install pg_dump backup units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - pg-dump-backup.service
+    - pg-dump-backup.timer
+  notify: Reload systemd for pg_dump backup
+
+- name: Load pg_dump backup units
+  ansible.builtin.meta: flush_handlers
+
+- name: Configure pg_dump backup timer
+  ansible.builtin.systemd_service:
+    name: pg-dump-backup.timer
+    enabled: "{{ backup_timers_enabled | bool }}"
+    state: "{{ 'started' if backup_timers_enabled | bool else 'stopped' }}"
+  when: backup_timers_enabled is not none and not ansible_check_mode

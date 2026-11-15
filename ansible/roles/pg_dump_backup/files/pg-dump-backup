@@ -1,0 +1,23 @@
+#!/bin/bash
+# Streams pg_dump -Fc and the cluster globals into an rclone crypt remote,
+# then deletes dumps older than the retention. Runs as root; the dumps run as
+# postgres. Usage: pg-dump-backup <rclone.conf> <remote:path> <database> <days>
+set -euo pipefail
+config=$1
+destination=$2
+database=$3
+retention_days=$4
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+rc=(/usr/bin/rclone --config "$config")
+# "remote:" and "remote:dir" both work.
+[[ $destination == *: ]] || destination="$destination/"
+
+upload() { # <name> <command...>: upload to a partial name, then rename
+  local name=$1; shift
+  "$@" | "${rc[@]}" rcat "$destination$name.partial"
+  "${rc[@]}" moveto "$destination$name.partial" "$destination$name"
+}
+
+upload "$database-$stamp.dump" runuser -u postgres -- pg_dump -Fc -d "$database"
+upload "globals-$stamp.sql" runuser -u postgres -- pg_dumpall --globals-only --no-role-passwords
+"${rc[@]}" delete --min-age "${retention_days}d" "$destination"

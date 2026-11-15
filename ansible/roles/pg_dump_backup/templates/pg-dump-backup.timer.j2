@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly pg_dump backup timer
+
+[Timer]
+OnCalendar={{ pg_dump_backup_calendar }}
+Persistent=true
+RandomizedDelaySec=15m
+Unit=pg-dump-backup.service
+
+[Install]
+WantedBy=timers.target

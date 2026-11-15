@@ -1,0 +1,32 @@
+#!/bin/bash
+# Records the row count of every table in the source database, and its applied
+# migrations, in the manifest database right before a backup. The row lands
+# in the backup, so a restore can check it got at least this much back.
+# Runs as postgres.
+set -euo pipefail
+source_db=$1
+manifest_db=$2
+
+counts=$(psql -X -At -v ON_ERROR_STOP=1 -d "$source_db" <<'SQL'
+SELECT coalesce(jsonb_object_agg(c.relname,
+         (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I.%I', n.nspname, c.relname), false, true, '')))[1]::text::bigint),
+       '{}'::jsonb)
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'r' AND n.nspname = 'public';
+SQL
+)
+
+migrations=$(psql -X -At -v ON_ERROR_STOP=1 -d "$source_db" <<'SQL'
+SELECT to_regclass('public.schema_migrations') IS NOT NULL AS has_migrations \gset
+\if :has_migrations
+SELECT coalesce(jsonb_agg(name ORDER BY name), '[]'::jsonb) FROM schema_migrations;
+\else
+SELECT '[]'::jsonb;
+\endif
+SQL
+)
+
+psql -X -q -v ON_ERROR_STOP=1 -d "$manifest_db" -v source_db="$source_db" -v counts="$counts" -v migrations="$migrations" <<'SQL'
+INSERT INTO backup_manifest (source_db, counts, migrations)
+VALUES (:'source_db', :'counts'::jsonb, :'migrations'::jsonb);
+SQL

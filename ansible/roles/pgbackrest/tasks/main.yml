@@ -1,0 +1,127 @@
+---
+- name: Validate pgBackRest arguments
+  ansible.builtin.assert:
+    that:
+      - pgbackrest_repo_s3_bucket | length > 0
+      - pgbackrest_cipher_pass | length >= 32
+      - "'REPLACE_ME' not in pgbackrest_cipher_pass"
+      - "'REPLACE_ME' not in pgbackrest_s3_key"
+      - not (pgbackrest_install_backup_units | bool) or (pgbackrest_manifest_source_database | length > 0)
+    fail_msg: >-
+      Set pgbackrest_repo_s3_bucket and real vault values (cipher pass of at
+      least 32 characters), and pgbackrest_manifest_source_database for backups.
+  no_log: true
+
+- name: Install pgBackRest from PGDG
+  ansible.builtin.apt:
+    name: pgbackrest
+    state: present
+
+- name: Create pgBackRest directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: postgres
+    mode: "0750"
+  loop:
+    - { path: /etc/pgbackrest, owner: root }
+    - { path: /var/log/pgbackrest, owner: postgres }
+
+- name: Render pgBackRest configuration
+  ansible.builtin.template:
+    src: pgbackrest.conf.j2
+    dest: "{{ pgbackrest_config_path }}"
+    owner: root
+    group: postgres
+    mode: "0640"
+  no_log: true
+
+- name: Create or validate the stanza
+  ansible.builtin.command:
+    argv: [pgbackrest, "--stanza={{ pgbackrest_stanza }}", stanza-create]
+  become: true
+  become_user: postgres
+  register: pgbackrest_stanza_create
+  # pgBackRest refuses a repository whose stanza belongs to another cluster
+  # (different system identifier). On a rebuilt VM, restore first.
+  changed_when: "'already exists' not in (pgbackrest_stanza_create.stdout ~ pgbackrest_stanza_create.stderr)"
+  when: pgbackrest_archive_enabled | bool and not ansible_check_mode
+
+- name: Check WAL archiving end to end
+  ansible.builtin.command:
+    argv: [pgbackrest, "--stanza={{ pgbackrest_stanza }}", check]
+  become: true
+  become_user: postgres
+  changed_when: false
+  when: pgbackrest_archive_enabled | bool and not ansible_check_mode
+
+- name: Install backup units
+  when: pgbackrest_install_backup_units | bool
+  block:
+    - name: Create the backup manifest database
+      ansible.builtin.command:
+        argv: [psql, -X, -q, -v, ON_ERROR_STOP=1, -d, postgres]
+        stdin: |
+          \set db '{{ pgbackrest_manifest_database }}'
+          SELECT format('CREATE DATABASE %I', :'db')
+            WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db') \gexec
+      become: true
+      become_user: postgres
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Create the backup manifest table
+      ansible.builtin.command:
+        argv: [psql, -X, -q, -v, ON_ERROR_STOP=1, -d, "{{ pgbackrest_manifest_database }}"]
+        stdin: |
+          CREATE TABLE IF NOT EXISTS backup_manifest (
+            id bigserial PRIMARY KEY,
+            taken_at timestamptz NOT NULL DEFAULT now(),
+            source_db text NOT NULL,
+            counts jsonb NOT NULL,
+            migrations jsonb NOT NULL
+          );
+      become: true
+      become_user: postgres
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Install the backup manifest script
+      ansible.builtin.copy:
+        src: pgbackrest-backup-manifest
+        dest: /usr/local/sbin/pgbackrest-backup-manifest
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install backup services
+      ansible.builtin.template:
+        src: pgbackrest-backup.service.j2
+        dest: "/etc/systemd/system/pgbackrest-{{ item }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [full, diff]
+      notify: Reload systemd for pgbackrest
+
+    - name: Install backup timers
+      ansible.builtin.template:
+        src: pgbackrest-backup.timer.j2
+        dest: "/etc/systemd/system/pgbackrest-{{ item }}.timer"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [full, diff]
+      notify: Reload systemd for pgbackrest
+
+    - name: Load backup units
+      ansible.builtin.meta: flush_handlers
+
+    - name: Configure backup timers
+      ansible.builtin.systemd_service:
+        name: "pgbackrest-{{ item }}.timer"
+        enabled: "{{ backup_timers_enabled | bool }}"
+        state: "{{ 'started' if backup_timers_enabled | bool else 'stopped' }}"
+      loop: [full, diff]
+      when: backup_timers_enabled is not none and not ansible_check_mode

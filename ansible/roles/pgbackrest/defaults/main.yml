@@ -1,0 +1,39 @@
+---
+# pgBackRest to an S3-compatible repository (Cloudflare R2), encrypted by
+# pgBackRest itself. Install the postgresql role first (PGDG repository).
+pgbackrest_stanza: main
+pgbackrest_config_path: /etc/pgbackrest/pgbackrest.conf
+
+pgbackrest_repo_s3_bucket: ""
+pgbackrest_repo_s3_endpoint: "{{ vault_r2_account_id }}.r2.cloudflarestorage.com"
+pgbackrest_repo_s3_region: auto
+pgbackrest_repo_path: /pgbackrest
+pgbackrest_s3_key: "{{ vault_pgbackrest_s3_key }}"
+pgbackrest_s3_key_secret: "{{ vault_pgbackrest_s3_key_secret }}"
+pgbackrest_cipher_pass: "{{ vault_pgbackrest_cipher_pass }}"
+
+# Four full backups (weekly full => about four weeks of point-in-time recovery).
+pgbackrest_retention_full: 4
+pgbackrest_process_max: 2
+
+# WAL archiving and stanza-create. Off unless the caller enables it: a host
+# that pushes WAL writes into the shared repository.
+pgbackrest_archive_enabled: false
+
+# Backup services, timers and the pre-backup manifest. A restore rehearsal
+# host sets this to false so it can never run backup or expire.
+pgbackrest_install_backup_units: true
+
+# Leave the existing timers unchanged unless explicitly enabled or disabled.
+# Freshly installed timers stay disabled until explicitly enabled.
+backup_timers_enabled: null
+
+pgbackrest_full_calendar: "Sun *-*-* 02:30:00"
+pgbackrest_diff_calendar: "Mon..Sat *-*-* 02:30:00"
+pgbackrest_state_dir: /var/lib/pgbackrest-backup
+
+# Before each backup, record the row count of every table in
+# pgbackrest_manifest_source_database (and its schema_migrations) in
+# pgbackrest_manifest_database. A restore rehearsal compares against it.
+pgbackrest_manifest_source_database: ""
+pgbackrest_manifest_database: backup_check

@@ -1,0 +1,67 @@
+---
+- name: Install node exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+    policy_rc_d: 101
+
+- name: Create metrics directory
+  ansible.builtin.file:
+    path: "{{ postgres_backup_monitor_textfile_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure localhost-only node exporter
+  ansible.builtin.copy:
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      ARGS="--web.listen-address={{ postgres_backup_monitor_listen }} --collector.disable-defaults --collector.filesystem --collector.systemd --collector.systemd.unit-include={{ postgres_backup_monitor_units_regex }} --collector.textfile --collector.textfile.directory={{ postgres_backup_monitor_textfile_dir }}"
+  notify: Restart node exporter
+
+- name: Install backup metrics collector
+  ansible.builtin.copy:
+    src: postgres-backup-metrics
+    dest: /usr/local/sbin/postgres-backup-metrics
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install backup metrics service
+  ansible.builtin.template:
+    src: postgres-backup-metrics.service.j2
+    dest: /etc/systemd/system/postgres-backup-metrics.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd for backup metrics
+
+- name: Install backup metrics timer
+  ansible.builtin.copy:
+    src: postgres-backup-metrics.timer
+    dest: /etc/systemd/system/postgres-backup-metrics.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd for backup metrics
+
+- name: Apply monitoring configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable node exporter
+  ansible.builtin.systemd_service:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Enable backup metrics timer
+  ansible.builtin.systemd_service:
+    name: postgres-backup-metrics.timer
+    enabled: true
+    state: started
+  when: not ansible_check_mode

@@ -1,0 +1,25 @@
+---
+# Weekly logical dump (pg_dump -Fc plus globals) to R2 through an rclone crypt
+# remote. A version-independent copy next to the pgBackRest repository.
+pg_dump_backup_database: ""
+pg_dump_backup_config_dir: /etc/pg-dump-backup
+pg_dump_backup_config_path: "{{ pg_dump_backup_config_dir }}/rclone.conf"
+pg_dump_backup_state_dir: /var/lib/pg-dump-backup
+
+pg_dump_backup_bucket: ""
+pg_dump_backup_prefix: pg_dump
+pg_dump_backup_r2_remote: r2-raw
+pg_dump_backup_crypt_remote: r2-crypt
+pg_dump_backup_r2_endpoint: "https://{{ vault_r2_account_id }}.r2.cloudflarestorage.com"
+pg_dump_backup_access_key_id: "{{ vault_pgbackrest_s3_key }}"
+pg_dump_backup_secret_access_key: "{{ vault_pgbackrest_s3_key_secret }}"
+pg_dump_backup_crypt_password: "{{ vault_pg_dump_crypt_password }}"
+pg_dump_backup_crypt_salt: "{{ vault_pg_dump_crypt_salt }}"
+
+# Dumps older than this are deleted after a successful upload.
+pg_dump_backup_retention_days: 35
+pg_dump_backup_calendar: "Sun *-*-* 04:30:00"
+
+# Same convention as rclone-backup: null leaves the timer as it is, and a new
+# timer is disabled until explicitly enabled.
+backup_timers_enabled: null

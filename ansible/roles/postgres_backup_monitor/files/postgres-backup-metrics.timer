@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh PostgreSQL backup metrics
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=postgres-backup-metrics.service
+
+[Install]
+WantedBy=timers.target

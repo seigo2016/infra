@@ -1,0 +1,11 @@
+[Unit]
+Description=pgBackRest {{ item }} backup timer
+
+[Timer]
+OnCalendar={{ pgbackrest_full_calendar if item == 'full' else pgbackrest_diff_calendar }}
+Persistent=true
+RandomizedDelaySec=15m
+Unit=pgbackrest-{{ item }}.service
+
+[Install]
+WantedBy=timers.target
