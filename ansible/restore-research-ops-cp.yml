@@ -1,0 +1,64 @@
+---
+# Restores the production research-ops Control Plane database from R2
+# (pgBackRest), on the running VM or on a freshly rebuilt one. Stops the API
+# and engine first, leaves the cluster archiving to the same repository, and
+# suspends dispatch: the engine stays down until the reconciliation with the
+# Bridge journals is done and the marker is removed. Then run
+# setup-research-ops-cp.yml. See docs/standards/research-ops-cp-restore.md.
+#
+#   .venv-ansible/bin/ansible-playbook -i ansible/inventory.research-ops-cp.yml \
+#     ansible/restore-research-ops-cp.yml --ask-vault-pass \
+#     -e research_ops_cp_confirm_restore=research-ops-cp
+# Optional: -e pgbackrest_restore_target_time='2026-11-20 03:00:00+09'
+- name: Restore the research-ops Control Plane database
+  hosts: research-ops-cp
+  remote_user: debian
+  become: true
+
+  vars:
+    # Archive only after the restore; the restored cluster turns it on again.
+    pgbackrest_archive_enabled: false
+    pgbackrest_install_backup_units: false
+    postgresql_databases: []
+    pgbackrest_restore_archive_mode: preserve
+
+  pre_tasks:
+    - name: Require explicit confirmation
+      ansible.builtin.assert:
+        that:
+          - research_ops_cp_confirm_restore | default('') == 'research-ops-cp'
+          - ansible_facts['hostname'] == 'research-ops-cp'
+        fail_msg: >-
+          This overwrites the production database. Re-run with
+          -e research_ops_cp_confirm_restore=research-ops-cp on research-ops-cp.
+
+    - name: Suspend dispatch before anything else
+      ansible.builtin.copy:
+        dest: "{{ research_ops_dispatch_suspended_marker }}"
+        content: "restored {{ ansible_facts['date_time']['iso8601'] }}; remove after reconciliation\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Stop the API and engine
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+      loop: [research-ops-engine, research-ops-api]
+      failed_when: false
+
+  roles:
+    - role: host_baseline
+    - role: postgresql
+    - role: pgbackrest
+    - role: pgbackrest_restore
+
+  post_tasks:
+    - name: Next steps
+      ansible.builtin.debug:
+        msg: >-
+          Restored. research-ops-api and research-ops-engine are stopped and
+          {{ research_ops_dispatch_suspended_marker }} keeps the engine down.
+          Run setup-research-ops-cp.yml (re-enables archiving and the API),
+          reconcile with the Bridge journals, then remove the marker and
+          start research-ops-engine.

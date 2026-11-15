@@ -1,0 +1,181 @@
+---
+- name: Validate restore arguments
+  ansible.builtin.assert:
+    that:
+      - pgbackrest_restore_archive_mode in ['off', 'preserve']
+      - pgbackrest_restore_source_database | length > 0
+    fail_msg: pgbackrest_restore_archive_mode must be off or preserve, and the source database must be named.
+
+- name: Read the repository
+  ansible.builtin.command:
+    argv: [pgbackrest, "--stanza={{ pgbackrest_stanza }}", --output=json, info]
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_info
+  changed_when: false
+
+- name: Pick the backup to restore
+  ansible.builtin.set_fact:
+    pgbackrest_restore_backups: "{{ (pgbackrest_restore_info.stdout | from_json)[0].backup | default([]) }}"
+
+- name: Require at least one backup
+  ansible.builtin.assert:
+    that:
+      - pgbackrest_restore_backups | length > 0
+    fail_msg: The repository has no backup for stanza {{ pgbackrest_stanza }}.
+
+- name: Stop PostgreSQL
+  ansible.builtin.systemd_service:
+    name: "{{ postgresql_unit }}"
+    state: stopped
+
+- name: Restore the stanza
+  ansible.builtin.command:
+    argv: >-
+      {{ ['pgbackrest', '--stanza=' ~ pgbackrest_stanza, '--delta',
+          '--archive-mode=' ~ pgbackrest_restore_archive_mode]
+         + (['--set=' ~ pgbackrest_restore_set] if pgbackrest_restore_set else [])
+         + (['--type=time', '--target=' ~ pgbackrest_restore_target_time, '--target-action=promote']
+            if pgbackrest_restore_target_time else [])
+         + ['restore'] }}
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_run
+  changed_when: true
+
+- name: Start PostgreSQL
+  ansible.builtin.systemd_service:
+    name: "{{ postgresql_unit }}"
+    state: started
+
+- name: Wait until recovery has finished and the cluster is promoted
+  ansible.builtin.command:
+    argv: [psql, -X, -At, -d, postgres, -c, "SELECT pg_is_in_recovery()"]
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_recovery
+  until: pgbackrest_restore_recovery.stdout | default('') == 'f'
+  retries: "{{ pgbackrest_restore_promote_retries }}"
+  delay: 10
+  changed_when: false
+
+- name: Read archive_mode of the restored cluster
+  ansible.builtin.command:
+    argv: [psql, -X, -At, -d, postgres, -c, "SHOW archive_mode"]
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_archive_mode_now
+  changed_when: false
+
+- name: Require archiving off on a rehearsal
+  ansible.builtin.assert:
+    that:
+      - pgbackrest_restore_archive_mode != 'off' or pgbackrest_restore_archive_mode_now.stdout == 'off'
+    fail_msg: The restored cluster archives WAL although the rehearsal asked for archive_mode=off.
+
+- name: Read the last manifest recorded before the backup
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -X
+      - -At
+      - -d
+      - "{{ pgbackrest_restore_manifest_database }}"
+      - -c
+      - >-
+        SELECT jsonb_build_object('taken_at', taken_at, 'counts', counts, 'migrations', migrations)
+        FROM backup_manifest WHERE source_db = '{{ pgbackrest_restore_source_database }}'
+        ORDER BY id DESC LIMIT 1
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_manifest_raw
+  changed_when: false
+
+- name: Require the manifest
+  ansible.builtin.assert:
+    that:
+      - pgbackrest_restore_manifest_raw.stdout | length > 0
+    fail_msg: >-
+      No backup_manifest row for {{ pgbackrest_restore_source_database }} in the
+      restored {{ pgbackrest_restore_manifest_database }} database; the backup
+      predates the manifest or was not taken by the pgbackrest-*.service units.
+
+- name: Keep the manifest
+  ansible.builtin.set_fact:
+    pgbackrest_restore_manifest: "{{ pgbackrest_restore_manifest_raw.stdout | from_json }}"
+
+- name: Compare the restored database with the manifest
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -X
+      - -At
+      - -v
+      - ON_ERROR_STOP=1
+      - -v
+      - "manifest_counts={{ pgbackrest_restore_manifest.counts | to_json }}"
+      - -v
+      - "manifest_migrations={{ pgbackrest_restore_manifest.migrations | to_json }}"
+      - -d
+      - "{{ pgbackrest_restore_source_database }}"
+    stdin: "{{ lookup('ansible.builtin.file', 'compare-with-manifest.sql') }}"
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_compare_raw
+  changed_when: false
+
+- name: Keep the comparison
+  ansible.builtin.set_fact:
+    pgbackrest_restore_restored: "{{ pgbackrest_restore_compare_raw.stdout | from_json }}"
+
+- name: Check schema and row counts against the manifest
+  ansible.builtin.assert:
+    that:
+      - pgbackrest_restore_restored.missing_migrations | length == 0
+      - pgbackrest_restore_restored.short_tables | length == 0
+    fail_msg: >-
+      Restored database is behind the manifest of {{ pgbackrest_restore_manifest.taken_at }}:
+      missing migrations {{ pgbackrest_restore_restored.missing_migrations }},
+      tables missing or with fewer rows {{ pgbackrest_restore_restored.short_tables }}.
+
+- name: Dry-run the reconciliation (rolled back)
+  ansible.builtin.command:
+    argv: [psql, -X, -q, -At, -d, "{{ pgbackrest_restore_source_database }}"]
+    stdin: "{{ lookup('ansible.builtin.file', 'reconcile-dry-run.sql') }}"
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_reconcile
+  changed_when: false
+
+- name: Create the report directory
+  ansible.builtin.file:
+    path: "{{ pgbackrest_restore_report_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the restore report
+  ansible.builtin.copy:
+    dest: "{{ pgbackrest_restore_report_dir }}/report-{{ ansible_facts['date_time']['iso8601_basic_short'] }}.json"
+    owner: root
+    group: root
+    mode: "0600"
+    content: "{{ pgbackrest_restore_report | to_nice_json }}\n"
+  vars:
+    pgbackrest_restore_report:
+      host: "{{ ansible_facts['hostname'] }}"
+      stanza: "{{ pgbackrest_stanza }}"
+      latest_backup: "{{ pgbackrest_restore_backups[-1].label }}"
+      restored_set: "{{ pgbackrest_restore_set or 'latest' }}"
+      target_time: "{{ pgbackrest_restore_target_time or 'end of archive' }}"
+      archive_mode: "{{ pgbackrest_restore_archive_mode_now.stdout }}"
+      manifest_taken_at: "{{ pgbackrest_restore_manifest.taken_at }}"
+      manifest_counts: "{{ pgbackrest_restore_manifest.counts }}"
+      restored_counts: "{{ pgbackrest_restore_restored.counts }}"
+      migrations: "{{ pgbackrest_restore_restored.migrations }}"
+      reconciliation_dry_run: "{{ pgbackrest_restore_reconcile.stdout | from_json }}"
+
+- name: Show the reconciliation dry-run
+  ansible.builtin.debug:
+    msg: "{{ pgbackrest_restore_reconcile.stdout | from_json }}"

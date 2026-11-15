@@ -1,0 +1,21 @@
+---
+# Restores the pgBackRest stanza into this host's cluster and verifies it.
+# Shared by the rehearsal (restore-test-research-ops-cp.yml) and the real
+# restore (restore-research-ops-cp.yml). Needs the postgresql and pgbackrest
+# roles first.
+
+# "off" writes archive_mode=off into the restored cluster, so it can never
+# push WAL into the repository. The rehearsal must use "off"; a production
+# restore keeps the configured archive_mode ("preserve").
+pgbackrest_restore_archive_mode: preserve
+
+# Optional point-in-time target, e.g. "2026-11-20 03:00:00+09". Empty restores
+# to the end of the archived WAL.
+pgbackrest_restore_target_time: ""
+# Optional backup set label. Empty uses the latest backup.
+pgbackrest_restore_set: ""
+
+pgbackrest_restore_source_database: "{{ pgbackrest_manifest_source_database }}"
+pgbackrest_restore_manifest_database: "{{ pgbackrest_manifest_database }}"
+pgbackrest_restore_report_dir: /var/lib/pgbackrest-restore
+pgbackrest_restore_promote_retries: 60
