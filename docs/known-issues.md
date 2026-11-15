@@ -5,6 +5,58 @@ git 履歴と merged PR に残っているので、ここには載せない。
 
 優先度の高い順に並べる。
 
+## Garage の復元と監視
+
+- 2026-11-04 の復元試験で見つかった rclone crypt パスワードの不一致は Vault を
+  修正済み。正しい R2 と crypt の設定は KeePassXC に添付済みだが、以前 Vault から
+  転記したパスワードのメモは更新が必要。Ansible は既存 crypt キーとの不一致を
+  検出すると設定を上書きせず停止する。
+- R2 から試験 VM への復元は全 622,859 ファイルが一致し、DVC から 1 ファイルを
+  取り出せた。KeePassXC から直接設定を取り出す手順の通し確認は残っている。
+  週次バックアップの最終成功以降のデータは失われ得る。
+- Cloudflare Worker から Garage、バックアップ時刻、ZFS と空き容量を監視する。
+  本番のバックアップ成功に伴う Discord 復旧通知は確認済み。
+- Garage 標準のメタデータスナップショットはローカルに保持される。
+  旧方式で R2 や Dropbox に保存した tar の整合性は未検証。
+- OS と Garage は同一 VM ディスク上。ディスク分離は OS 更新や VM 再作成を
+  容易にするが、単一 Proxmox ホストの故障には別の復旧先と R2 が必要。
+- Debian 13 更新前のローカル VM スナップショットを保持中。更新後の確認と、
+  保持期間・削除時期を決める。スナップショットは同じ ZFS pool 上にある。
+- data-store 用の ansible-core は 2.21.6 を使用する。修正後の Vault を使った本番 VM の
+  check mode は成功し、Caddy のダウンロードと rclone 設定が変更候補として表示された。
+  check mode では crypt キー不一致の上書き防止処理を実行しないため、別途照合し、
+  現在の crypt パスワード・salt と R2 接続情報が Vault と一致することを確認した。
+  復元時は `backup_timers_enabled=false` を明示し、復元完了後に有効化する。
+- 復元手順は [`standards/data-store-restore.md`](standards/data-store-restore.md)。
+
+## Proxmox の Terraform provider
+
+当面は Telmate を使う。3.0.2-rc10 で plan は通るが、既存 4 VM の更新差分は
+apply 前に検証する。非推奨だった `onboot` は `start_at_node_boot` に変更済み。
+設定名移行と電源状態の差分を表示する。provider は既定で必要時に自動再起動するため、
+Garage への送信中は apply しない。
+
+Debian 13 の `Debian13CloudInitAgent`（VMID 9003）を別途作成し、クローンの SSH と
+guest agent を確認した。共有クローン元の単純な変更は既存 4 VM の再作成を招くため、
+各 VM の `clone` に `ignore_changes` を設定し、新規作成用のテンプレートを切り替えた。
+plan は既存 4 VM の更新のみで、再作成はない。既存 VM の OS はこの設定では更新されない。
+Terraform の本番 apply は他の差分の検証を終えるまで保留。
+新テンプレートのクローンでは cloud-init が完了するが、Proxmox の生成設定にある
+非推奨の `user` 指定によって `degraded done` を報告する。実害と対応方法は未確認。
+
+別 state の試験 VM では、旧 `desc` / `onboot` から新設定への更新は再起動せず成功した。
+`bootdisk` を `boot` にし、既定の `startup_shutdown` と `power_state` を明示すると
+再 plan は差分なしになったため、本番設定にも反映した。`power_state = "running"` は
+停止中 VM の apply で起動させる。試験が本番の全条件を再現するわけではない。
+
+prod の Terraform state はローカルの `terraform/prod/terraform.tfstate` にある。
+秘密情報を含み得るため Git に追加せず、端末外で利用できる暗号化バックアップを
+確認する。state を失った場合は VM の import と実機照合が必要になる。
+
+将来の移行候補として [bpg/proxmox](https://github.com/bpg/terraform-provider-proxmox)
+がある。Proxmox 9 と Cloudflare Access のヘッダーに対応する一方、移行には VM 定義と
+state の扱いを検証する必要がある。現時点では移行しない。
+
 ---
 
 ## 1. atuin の匿名登録が開いている（セキュリティ）
