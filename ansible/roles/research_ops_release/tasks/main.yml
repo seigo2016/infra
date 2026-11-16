@@ -4,9 +4,13 @@
     that:
       - research_ops_src_repo | length > 0
       - research_ops_git_version is match('^[0-9a-f]{40}$')
+      - research_ops_access_team_domain is match('^https://[a-z0-9-]+[.]cloudflareaccess[.]com$')
+      - research_ops_access_aud | length > 0
+      - research_ops_access_actors | length > 0
     fail_msg: >-
-      Export RESEARCH_OPS_REPO (a local clone of research-ops) and set
-      research_ops_git_version to a full commit SHA.
+      Export RESEARCH_OPS_REPO (a local clone of research-ops), set
+      research_ops_git_version to a full commit SHA, and set the Access
+      values from `terraform -chdir=terraform/cloudflare output -json api_access`.
 
 - name: Resolve the pinned commit in the local clone
   ansible.builtin.command:
@@ -103,9 +107,9 @@
     group: "{{ research_ops_user }}"
     mode: "0750"
 
-- name: Render the database environment file
+- name: Render the service environment file
   ansible.builtin.template:
-    src: database.env.j2
+    src: research-ops.env.j2
     dest: "{{ research_ops_env_file }}"
     owner: root
     group: "{{ research_ops_user }}"

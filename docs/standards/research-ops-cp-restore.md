@@ -47,11 +47,17 @@ Proxmox がない別のマシンでも、Debian 13 のホストに inventory を
    - Object Read only（復元の試験用）
 4. `ansible/group_vars/research-ops-cp/vault.yml.example` を `vault.yml` に写して値を入れ、
    `ansible-vault encrypt` する。Tunnel の token は
-   `terraform -chdir=terraform/cloudflare output -raw tunnel_token`。
+   `terraform -chdir=terraform/cloudflare output -raw tunnel_token`。API が Access のトークンを
+   確かめるための `vault_research_ops_access` は
+   `terraform -chdir=terraform/cloudflare output -json api_access` の値をそのまま入れる。
+   Bridge の端末を足すか取り消したら（`research_ops_access_clients`）、apply の後にこの値を
+   入れ直して構築の playbook を流す。
 5. `.env` に `TF_VAR_research_ops_cp_ip` を入れる（入れるまで prod の plan は通らない）。
 6. `group_vars/research-ops-cp/vars.yml` の `research_ops_git_version` に、配る
    research-ops の commit SHA を書き、`.env` か shell で `RESEARCH_OPS_REPO` に
-   research-ops のローカルの clone を指す。
+   research-ops のローカルの clone を指す。commit は、API が Access のトークンを検証する版
+   （`control-plane/apps/api/src/access.ts` がある版）以降にする。それより前の版は
+   `CP_ACCESS_*` を読まず、呼び手の名乗りをそのまま信じる。
 
 vault の全項目と Cloudflare / R2 のトークンは KeePassXC にも保存する。復元に要るのは
 このリポジトリ、vault のパスワード、R2 の鍵、pgBackRest の cipher pass だけ。
