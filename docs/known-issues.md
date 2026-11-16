@@ -48,9 +48,9 @@ git 履歴と merged PR に残っているので、ここには載せない。
   - Proxmox の cloud-init が VM 名をホスト名にすること。復元の試験の隔離はこれに頼る。
   - Cloudflare の API トークンの権限の名前（ダッシュボードの表記と合っているか）。
   - Cloudflare の応答の打ち切り（約 100 秒）。long-poll は 60 秒以内で返す前提。
-- **Bridge のホストごとの認証は API 側でまだない。** 今の門は Access のサービス
-  トークンだけ。Bridge をつなぐ前に、Control Plane がホストごとの資格を発行して
-  取り消せるようにする。
+- **呼び手の認証は Access のサービストークン 1 本。** API は Access のトークンを検証し、
+  サービストークンの client ID から端末を決める（一覧は `vault_research_ops_access`）。
+  端末の追加と取り消しは `research_ops_access_clients` を変えて apply し、vault を入れ直す。
 - **engine はまだ本物の runner を持たない。** 本番で dispatch させる仕事はまだない。
 - **Control Plane の epoch がスキーマにない。** 復元の dry-run は `lease_epoch` の
   締め出しを数えるだけで、epoch は `NOT RUN` と出す。epoch と、Bridge の journal との

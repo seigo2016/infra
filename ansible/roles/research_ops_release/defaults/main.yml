@@ -13,8 +13,13 @@ research_ops_release_dir: "{{ research_ops_home }}/releases/{{ research_ops_git_
 research_ops_current_dir: "{{ research_ops_home }}/current"
 
 research_ops_config_dir: /etc/research-ops
-research_ops_env_file: "{{ research_ops_config_dir }}/database.env"
+research_ops_env_file: "{{ research_ops_config_dir }}/research-ops.env"
 research_ops_database_url: ""   # secret; built in group_vars from the vault
+# Who may call the API (Cloudflare Access). From terraform/cloudflare:
+#   terraform -chdir=terraform/cloudflare output -json api_access
+research_ops_access_team_domain: ""   # https://<team>.cloudflareaccess.com
+research_ops_access_aud: ""           # Access application audience tag
+research_ops_access_actors: {}        # service token client ID -> actor id
 
 # Units stopped while a new release is migrated.
 research_ops_units: [research-ops-api, research-ops-engine]

@@ -29,6 +29,15 @@ output "access_client_expires_at" {
   value       = { for name, token in cloudflare_zero_trust_access_service_token.research_ops : name => token.expires_at }
 }
 
+output "api_access" {
+  description = "Settings the API needs to check Access tokens (vault_research_ops_access)"
+  value = {
+    team_domain = "https://${var.cloudflare_team_name}.cloudflareaccess.com"
+    aud         = cloudflare_zero_trust_access_application.research_ops.aud
+    actors      = { for name, token in cloudflare_zero_trust_access_service_token.research_ops : token.client_id => name }
+  }
+}
+
 output "backup_bucket" {
   description = "R2 bucket for the Control Plane backups"
   value       = cloudflare_r2_bucket.research_ops_backup.name

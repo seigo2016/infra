@@ -8,6 +8,8 @@
 # vault_research_ops_db_password:  openssl rand -hex 32  (alphanumeric only)
 # vault_research_ops_cloudflared_tunnel_token:
 #     terraform -chdir=terraform/cloudflare output -raw tunnel_token
+# vault_research_ops_access: who may call the API. Paste the value of
+#     terraform -chdir=terraform/cloudflare output -json api_access
 # vault_r2_account_id: Cloudflare account ID (R2 endpoint host)
 # vault_pgbackrest_s3_key / _secret: R2 API token, Object Read & Write,
 #     scoped to the research-ops-cp-backup bucket only. Used by pgBackRest
@@ -20,6 +22,11 @@
 
 vault_research_ops_db_password: "REPLACE_ME_64_HEX_CHARS"
 vault_research_ops_cloudflared_tunnel_token: "REPLACE_ME_FROM_TERRAFORM_OUTPUT"
+vault_research_ops_access:
+  team_domain: "https://REPLACE_ME_TEAM.cloudflareaccess.com"
+  aud: "REPLACE_ME_ACCESS_AUD"
+  actors:
+    REPLACE_ME_CLIENT_ID.access: bridge-1
 vault_r2_account_id: "REPLACE_ME_CLOUDFLARE_ACCOUNT_ID"
 vault_pgbackrest_s3_key: "REPLACE_ME_R2_ACCESS_KEY_READ_WRITE"
 vault_pgbackrest_s3_key_secret: "REPLACE_ME_R2_SECRET_KEY_READ_WRITE"
