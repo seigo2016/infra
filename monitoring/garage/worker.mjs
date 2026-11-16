@@ -48,9 +48,9 @@ export async function check(env, fetcher = fetch, now = Date.now() / 1000) {
     const values = observed[i].values;
     const key = target.prefix + name;
     const prior = previous.get(key);
-    const { state, action } = transition(prior || {}, !!values[name]);
-    if (!prior || prior.failures !== state.failures || !!prior.notified !== state.notified) {
-      updates.push(env.DB.prepare('INSERT INTO monitor_state (name, failures, notified) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET failures = excluded.failures, notified = excluded.notified').bind(key, state.failures, Number(state.notified)));
+    const { state, action } = transition(prior || {}, !!values[name], now);
+    if (!prior || prior.failures !== state.failures || Number(prior.notified) !== state.notified) {
+      updates.push(env.DB.prepare('INSERT INTO monitor_state (name, failures, notified) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET failures = excluded.failures, notified = excluded.notified').bind(key, state.failures, state.notified));
     }
     pending.push({ key, action, label: target.label, name, message: values[name] });
   }
@@ -58,8 +58,10 @@ export async function check(env, fetcher = fetch, now = Date.now() / 1000) {
   for (const { key, action, label, name, message } of pending) {
     if (!action) continue;
     try {
-      await send(env.DISCORD_WEBHOOK, action === 'alert' ? `⚠️ ${label}: ${message}` : `✅ ${label}: ${name} が復旧しました`, fetcher);
-      await env.DB.prepare('UPDATE monitor_state SET notified = ? WHERE name = ?').bind(Number(action === 'alert'), key).run();
+      const text = action === 'recovery' ? `✅ ${label}: ${name} が復旧しました`
+        : `⚠️ ${label}: ${message}${action === 'remind' ? '（続いています）' : ''}`;
+      await send(env.DISCORD_WEBHOOK, text, fetcher);
+      await env.DB.prepare('UPDATE monitor_state SET notified = ? WHERE name = ?').bind(action === 'recovery' ? 0 : Math.floor(now), key).run();
     } catch (error) {
       console.error('Discord notification failed', key, error.name);
     }

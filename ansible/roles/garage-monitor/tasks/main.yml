@@ -20,7 +20,7 @@
     group: root
     mode: "0644"
     content: |
-      ARGS="--web.listen-address=127.0.0.1:9100 --collector.disable-defaults --collector.filesystem --collector.systemd --collector.systemd.unit-include=garage.service --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter"
+      ARGS="--web.listen-address=127.0.0.1:9100 --collector.disable-defaults --collector.filesystem --collector.systemd --collector.systemd.unit-include=(garage|garage-backup)\\.service --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter"
   notify: Restart node exporter
 
 - name: Install backup metrics collector

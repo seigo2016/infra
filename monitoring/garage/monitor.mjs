@@ -49,6 +49,10 @@ export function evaluate(text, now) {
   const last = samples(metrics, 'garage_backup_last_success_timestamp_seconds');
   if (last === null || last <= 0 || last > now + 300) alarms.backup = 'バックアップ成功時刻が未確認';
   else if (now - last > MAX_BACKUP_AGE) alarms.backup = `バックアップの最終成功から ${Math.floor((now - last) / 3600)} 時間経過`;
+  // The run itself failed: report it now instead of waiting for the age limit.
+  if (samples(metrics, 'node_systemd_unit_state', { name: 'garage-backup.service', state: 'failed' }) === 1) {
+    alarms.backup = 'バックアップが失敗しました（journalctl -u garage-backup.service）';
+  }
   const pveTime = samples(metrics, 'garage_pve_last_success_timestamp_seconds');
   const poolHealthy = samples(metrics, 'garage_pve_zpool_healthy');
   const poolTotal = samples(metrics, 'garage_pve_storage_total_bytes');
@@ -60,10 +64,16 @@ export function evaluate(text, now) {
   return alarms;
 }
 
-export function transition(previous, failed) {
+const REMIND_AFTER = 86400;
+
+// `notified` holds when the alert was last sent (0 = not alerted). While the condition stays bad,
+// the alert is sent again once a day so a failure does not go quiet after one message.
+export function transition(previous, failed, now = Date.now() / 1000) {
+  const notified = Number(previous.notified) || 0;
   if (failed) {
-    const state = { failures: Math.min((previous.failures || 0) + 1, 3), notified: !!previous.notified };
-    return { state, action: state.failures >= 3 && !state.notified ? 'alert' : null };
+    const failures = Math.min((previous.failures || 0) + 1, 3);
+    const due = failures >= 3 && (!notified || now - notified >= REMIND_AFTER);
+    return { state: { failures, notified }, action: due ? (notified ? 'remind' : 'alert') : null };
   }
-  return { state: { failures: 0, notified: !!previous.notified }, action: previous.notified ? 'recovery' : null };
+  return { state: { failures: 0, notified }, action: notified ? 'recovery' : null };
 }

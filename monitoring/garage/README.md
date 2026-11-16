@@ -2,7 +2,7 @@
 
 `ansible/setup-garage-monitor.yml` は VM 上の node_exporter と、root 専用のバックアップ成功マーカーを読み取る systemd timer を設定する。exporter は `127.0.0.1:9100` のみで待ち受ける。成功記録がなければバックアップは未確認となる。通常の data-store セットアップにも同じ role を含む。
 
-Worker は VM のメトリクスを 5 分ごとに pull し、3 回連続の異常と復旧を Discord に通知する。閾値は VM の空き 15%、バックアップ成功から 7 日半。通知状態は D1 に保持し、Discord への送信が失敗したときは再試行する。連続実行や D1 更新時の障害による重複通知はあり得る。
+Worker は VM のメトリクスを 5 分ごとに pull し、3 回連続の異常と復旧を Discord に通知する。異常が続く間は 1 日 1 回通知し直す（D1 の `notified` は最後に通知した時刻、0 は未通知）。backup の service が失敗したら、経過時間の閾値を待たずに通知する（node_exporter の systemd の対象に `garage-backup.service` を含める）。閾値は VM の空き 15%、バックアップ成功から 7 日半。通知状態は D1 に保持し、Discord への送信が失敗したときは再試行する。連続実行や D1 更新時の障害による重複通知はあり得る。
 
 ## 導入状態
 

@@ -52,6 +52,16 @@ test('only alerts after three observations and reports recovery', () => {
   assert.equal(failure.action, 'alert');
   assert.equal(transition({ ...failure.state, notified: true }, false).action, 'recovery');
 });
+test('a lasting failure is reminded once a day, not every run', () => {
+  const sent = { failures: 3, notified: now - 3600 };
+  assert.equal(transition(sent, true, now).action, null);
+  assert.equal(transition({ failures: 3, notified: now - 86400 }, true, now).action, 'remind');
+});
+test('a failed backup run is reported before the age limit', () => {
+  const failed = metrics + 'node_systemd_unit_state{name="garage-backup.service",state="failed",type="oneshot"} 1\n';
+  assert.match(evaluate(failed, now).backup, /失敗/);
+  assert.equal(evaluate(metrics + 'node_systemd_unit_state{name="garage-backup.service",state="failed",type="oneshot"} 0\n', now).backup, undefined);
+});
 
 test('failed Discord delivery is retried and recovery is sent once', async () => {
   const rows = new Map();
@@ -77,7 +87,7 @@ test('failed Discord delivery is retried and recovery is sent once', async () =>
   discordOK = true;
   await check(env, fetcher, now);
   assert.equal(posts, 2);
-  assert.equal(rows.get('reachability').notified, 1);
+  assert.equal(rows.get('reachability').notified, Math.floor(now));
   unhealthy = false;
   await check(env, fetcher, now);
   await check(env, fetcher, now);
