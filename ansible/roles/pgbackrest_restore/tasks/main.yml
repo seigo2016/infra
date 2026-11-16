@@ -150,6 +150,16 @@
   register: pgbackrest_restore_reconcile
   changed_when: false
 
+- name: Raise the Control Plane epoch (production restore only)
+  ansible.builtin.command:
+    argv: [psql, -X, -q, -At, -d, "{{ pgbackrest_restore_source_database }}"]
+    stdin: "{{ lookup('ansible.builtin.file', 'raise-epoch.sql') }}"
+  become: true
+  become_user: postgres
+  register: pgbackrest_restore_epoch
+  changed_when: pgbackrest_restore_epoch.stdout != 'absent'
+  when: pgbackrest_restore_raise_epoch | bool
+
 - name: Create the report directory
   ansible.builtin.file:
     path: "{{ pgbackrest_restore_report_dir }}"
@@ -178,6 +188,7 @@
       restored_counts: "{{ pgbackrest_restore_restored.counts }}"
       migrations: "{{ pgbackrest_restore_restored.migrations }}"
       reconciliation_dry_run: "{{ pgbackrest_restore_reconcile.stdout | from_json }}"
+      control_plane_epoch: "{{ pgbackrest_restore_epoch.stdout | default('not raised') }}"
 
 - name: Show the reconciliation dry-run
   ansible.builtin.debug:

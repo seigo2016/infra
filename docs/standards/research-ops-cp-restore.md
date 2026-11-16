@@ -125,10 +125,10 @@ playbook がすること:
 3. PostgreSQL を起動し、promote されるまで待つ。
 4. 復元した `research_ops` を、backup の直前の manifest と照合する。manifest にある
    migration がすべて適用済みで、各テーブルの行数が manifest 以上であること。
-5. 突き合わせ（reconciliation）の dry-run。終わっていない attempt の `lease_epoch` を上げて
-   締め出す件数、止めておく dispatch_intents と outbox の件数を数え、すべて rollback する。
-   engine を入れないので dispatch は起きない。Control Plane の epoch はまだスキーマにないので
-   `NOT RUN` と出る。Bridge の journal との照合は Bridge が要るので含まない。
+5. 突き合わせ（reconciliation）の dry-run。Control Plane の epoch を上げたときに報告を
+   断られる、終わっていない attempt の件数と、止めておく dispatch_intents と outbox の件数を
+   数え、すべて rollback する。engine を入れないので dispatch は起きない。epoch の表がない
+   古い版の DB では `NOT RUN` と出る。Bridge の journal との照合は Bridge が要るので含まない。
 6. 結果を VM の `/var/lib/pgbackrest-restore/report-*.json` に書く。
 
 同じ Proxmox ホストの上の試験は、VM の作り直しと R2 からの復元は確かめるが、
@@ -160,8 +160,10 @@ system-id が違うので pgBackRest が拒む。構築の playbook は API と 
 （`-e backup_timers_enabled=true` がないと timer は無効のまま）。engine はこの印がある間は
 起動しない（unit の `ConditionPathExists`）。
 
-RFC §9 の残りは Control Plane 側で行う。epoch を上げ、各 Bridge の journal を問い合わせ、
-古い attempt を締め出して突き合わせる。終わったら dispatch を再開する。
+本番の復元の playbook は、照合の後に Control Plane の epoch を 1 つ上げて commit する
+（`raise-epoch.sql`、試験の VM では上げない）。復元の前に dispatch した仕事は、これで報告を
+断られる。RFC §9 の残り（各 Bridge の journal を問い合わせて突き合わせる）は Bridge が
+できてから Control Plane 側で行う。終わったら dispatch を再開する。
 
 ```bash
 ssh -J ss debian@"$TF_VAR_research_ops_cp_ip" \

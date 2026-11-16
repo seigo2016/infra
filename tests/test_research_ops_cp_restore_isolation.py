@@ -123,6 +123,13 @@ class RoleGuardTests(unittest.TestCase):
         check = task(tasks, 'Require archiving off on a rehearsal and on otherwise')['ansible.builtin.assert']['that']
         self.assertIn("pgbackrest_restore_archive_mode != 'off' or pgbackrest_restore_archive_mode_now.stdout == 'off'", check)
 
+    def test_only_the_production_restore_raises_the_epoch(self):
+        self.assertIs(load(ROLES / 'pgbackrest_restore/defaults/main.yml')['pgbackrest_restore_raise_epoch'], False)
+        self.assertNotIn('pgbackrest_restore_raise_epoch', load(ANSIBLE / 'vars/research-ops-cp-restore-test.yml'))
+        self.assertIs(load(PROD_RESTORE)[0]['vars']['pgbackrest_restore_raise_epoch'], True)
+        raise_task = task(load(ROLES / 'pgbackrest_restore/tasks/main.yml'), 'Raise the Control Plane epoch (production restore only)')
+        self.assertEqual(raise_task['when'], 'pgbackrest_restore_raise_epoch | bool')
+
     def test_reconciliation_is_rolled_back(self):
         sql = (ROLES / 'pgbackrest_restore/files/reconcile-dry-run.sql').read_text()
         statements = re.sub(r'--[^\n]*', '', sql).upper()

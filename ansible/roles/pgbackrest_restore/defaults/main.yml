@@ -10,6 +10,10 @@
 # the new timeline is archived.
 pgbackrest_restore_archive_mode: preserve
 
+# Raise control_plane.epoch for good after the restore. Only the production
+# restore sets it; the rehearsal leaves the restored copy as it was.
+pgbackrest_restore_raise_epoch: false
+
 # Optional point-in-time target, e.g. "2026-11-20 03:00:00+09". Empty restores
 # to the end of the archived WAL.
 pgbackrest_restore_target_time: ""

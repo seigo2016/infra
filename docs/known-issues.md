@@ -57,9 +57,9 @@ git 履歴と merged PR に残っているので、ここには載せない。
   サービストークンの client ID から端末を決める（一覧は `vault_research_ops_access`）。
   端末の追加と取り消しは `research_ops_access_clients` を変えて apply し、vault を入れ直す。
 - **engine はまだ本物の runner を持たない。** 本番で dispatch させる仕事はまだない。
-- **Control Plane の epoch がスキーマにない。** 復元の dry-run は `lease_epoch` の
-  締め出しを数えるだけで、epoch は `NOT RUN` と出す。epoch と、Bridge の journal との
-  突き合わせのコマンドを research-ops 側に作り、復元の playbook から呼ぶ。
+- **Bridge の journal との突き合わせがまだない。** 本番の復元は Control Plane の epoch を
+  上げて、復元の前の仕事の報告を断るところまで。断った仕事を journal と突き合わせて
+  取り込むコマンドは、Bridge ができてから research-ops 側に作る。
 - **監視は VM の中まで。** node_exporter（`127.0.0.1:9100`）はバックアップと WAL の
   指標を出すが、Tunnel の経路も Worker もない。garage-monitor の Worker を 2 つ目の
   対象に広げ、最後の backup と WAL の遅れの閾値で Discord に知らせる。
