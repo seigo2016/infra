@@ -3,5 +3,5 @@
 research_ops_hostname       = "research-ops.seigo2016.com"
 research_ops_origin_service = "http://127.0.0.1:4100"
 research_ops_tunnel_name    = "research-ops-cp"
-research_ops_access_clients = ["bridge-1"]
+research_ops_access_clients = ["bridge-1", "chair-1", "pi-1"]
 research_ops_backup_bucket  = "research-ops-cp-backup"
