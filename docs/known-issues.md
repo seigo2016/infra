@@ -46,14 +46,10 @@ git 履歴と merged PR に残っているので、ここには載せない。
 - **未検証の前提。**
   - Cloudflare の応答の打ち切り（約 100 秒）。long-poll は 60 秒以内で返す前提。
   - `systemd-analyze security research-ops-api` の点はまだ見ていない。
-- **構築で見つかった直す候補。**
-  - Bun を入れるためだけに Debian の nodejs と npm（依存を含め約 600 パッケージ）を入れていて、
-    ZFS の上では十数分かかる。Bun のバイナリを checksum つきで入れる形にする。
-  - PGDG の署名の鍵を実行のたびに `www.postgresql.org` から取っていて、IPv6 の待ちで
-    時間切れになることがある。鍵を role に入れて fingerprint を固定する。
-  - cloudflared の token が `service install` の引数に載り、vault の token を変えても
-    install が飛ばされて反映されない（初回は vault の値の誤りに気づけなかった）。
-  - systemd-resolved の LLMNR（5355）が全アドレスで待ち受けている。
+- **構築で見つかったことを直した（2026-11-16、コード。VM には次の構築の実行で入る）。** Bun は npm ではなく公式の release を
+  checksum つきで入れる。PGDG の署名の鍵は role に置く。cloudflared の token は root だけが
+  読める環境ファイルに置き、vault の値が変われば次の実行で反映する。LLMNR は止める。
+  初回の VM には、先の構築で入った Debian の nodejs と npm が残っている（使わない）。
 - **呼び手の認証は Access のサービストークン 1 本。** API は Access のトークンを検証し、
   サービストークンの client ID から端末を決める（一覧は `vault_research_ops_access`）。
   端末の追加と取り消しは `research_ops_access_clients` を変えて apply し、vault を入れ直す。

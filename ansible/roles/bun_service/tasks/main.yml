@@ -6,7 +6,8 @@
       - bun_service_user is defined and bun_service_user | length > 0
       - bun_service_workdir is defined and bun_service_workdir is match('^/')
       - bun_service_entrypoint is defined and bun_service_entrypoint | length > 0
-    fail_msg: bun_service requires bun_service_name, _user, _workdir and _entrypoint.
+      - bun_service_bun is defined and bun_service_bun is match('^/')
+    fail_msg: bun_service requires bun_service_name, _user, _workdir, _entrypoint and _bun.
 
 - name: "[{{ bun_service_name }}] Install systemd unit"
   ansible.builtin.template:

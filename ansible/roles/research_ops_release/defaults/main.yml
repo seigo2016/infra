@@ -12,6 +12,13 @@ research_ops_home: /opt/research-ops
 research_ops_release_dir: "{{ research_ops_home }}/releases/{{ research_ops_git_version }}"
 research_ops_current_dir: "{{ research_ops_home }}/current"
 
+# Bun is installed from its release archive, checksum pinned. The version must
+# match the "bun" entry the release's package.json pins (checked at deploy).
+research_ops_bun_version: "1.4.4"
+research_ops_bun_sha256: bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
+research_ops_bun_dir: "/usr/local/lib/bun-{{ research_ops_bun_version }}"
+research_ops_bun: "{{ research_ops_bun_dir }}/bun"
+
 research_ops_config_dir: /etc/research-ops
 research_ops_env_file: "{{ research_ops_config_dir }}/research-ops.env"
 research_ops_database_url: ""   # secret; built in group_vars from the vault

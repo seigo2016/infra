@@ -107,6 +107,9 @@ ssh -J ss debian@"$TF_VAR_research_ops_cp_ip" 'sudo systemctl start pgbackrest-f
 月に 1 回と、PostgreSQL や pgBackRest の版を上げるときに行う。RFC の、本番に入れる前の
 関門（backup + WAL + 復元 + 突き合わせ）に当たる。
 
+試験の VM は毎回同じ IP で作り直され、SSH の host key が変わる。前の試験の記録が残っていると
+SSH が断るので、先に `ssh-keygen -R "$TF_VAR_research_ops_cp_restore_test_ip"` で消す。
+
 ```bash
 # .env: TF_VAR_research_ops_cp_restore_test_enabled=true と TF_VAR_research_ops_cp_restore_test_ip
 cd terraform/prod && terraform apply && cd ../..

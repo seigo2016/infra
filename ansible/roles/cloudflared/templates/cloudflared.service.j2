@@ -1,0 +1,18 @@
+# Managed by Ansible (role cloudflared). The tunnel token is read from a
+# root-only environment file, so it is neither on the command line nor in
+# this world-readable unit.
+[Unit]
+Description=cloudflared (Cloudflare Tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+EnvironmentFile={{ cloudflared_token_file }}
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

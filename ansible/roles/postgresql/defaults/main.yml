@@ -8,7 +8,11 @@ postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/{{ postgresql
 postgresql_bin_dir: "/usr/lib/postgresql/{{ postgresql_version }}/bin"
 
 postgresql_pgdg_uri: https://apt.postgresql.org/pub/repos/apt
-postgresql_pgdg_key_url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+# files/pgdg.asc is the PGDG signing key, fingerprint
+# B97B 0AFC AA1A 47F0 44F2  44A0 7FCC 7D46 ACCC 4CF8 (from
+# https://www.postgresql.org/media/keys/ACCC4CF8.asc). Kept in the role so a
+# deploy does not fetch it, and a changed key shows up in review.
+postgresql_pgdg_key_path: /etc/apt/keyrings/pgdg.asc
 
 postgresql_listen_addresses: localhost
 postgresql_port: 5432
