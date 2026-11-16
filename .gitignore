@@ -22,3 +22,6 @@ pve.json
 *.key
 id_rsa*
 id_ed25519*
+
+# Editor swap files (an open .env leaves its contents in ..env.swp)
+*.swp
