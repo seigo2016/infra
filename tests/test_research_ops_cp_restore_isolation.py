@@ -82,7 +82,8 @@ class RehearsalPlaybookTests(unittest.TestCase):
                          'not (pgbackrest_install_backup_units | bool)',
                          'not (backup_timers_enabled | bool)',
                          "pgbackrest_restore_archive_mode == 'off'",
-                         'pgbackrest_s3_key == vault_pgbackrest_restore_s3_key'):
+                         'pgbackrest_s3_key == vault_pgbackrest_restore_s3_key',
+                         'vault_pgbackrest_restore_s3_key != vault_pgbackrest_s3_key'):
             self.assertIn(expected, that)
 
 

@@ -36,6 +36,8 @@ resource "proxmox_vm_qemu" "vm" {
   scsihw             = "virtio-scsi-pci"
   boot               = "order=scsi0"
   power_state        = "running"
+  # These VMs hold databases: reboot them by hand, not in the middle of an apply.
+  automatic_reboot = false
 
   startup_shutdown {
     order            = -1
@@ -50,6 +52,7 @@ resource "proxmox_vm_qemu" "vm" {
           size       = var.disk_size
           storage    = var.storage_pool
           emulatessd = true
+          discard    = true
         }
       }
     }

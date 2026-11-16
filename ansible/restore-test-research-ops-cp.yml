@@ -60,9 +60,11 @@
           - not (backup_timers_enabled | bool)
           - pgbackrest_restore_archive_mode == 'off'
           - pgbackrest_s3_key == vault_pgbackrest_restore_s3_key
+          - vault_pgbackrest_restore_s3_key != vault_pgbackrest_s3_key
         fail_msg: >-
           Keep WAL archiving, stanza changes and backup units off, restore with
-          archive_mode=off and use the read-only R2 key.
+          archive_mode=off and use the read-only R2 key (a different key from
+          the production read-write one).
       no_log: true
 
   roles:

@@ -70,6 +70,9 @@ git 履歴と merged PR に残っているので、ここには載せない。
   寄せられるが、state の移動（`moved`）が要るので今はしない。
 - **pg_dump の crypt の鍵。** rclone-backup のような、既存の鍵との不一致を検出する
   仕組みはない。鍵を変えると古いダンプは新しい設定では読めない。
+- **バックアップは VM の鍵 1 本で消せる。** pgBackRest と pg_dump は同じバケットと同じ
+  読み書きの R2 鍵を使う。VM が乗っ取られた場合への備え（pg_dump の prefix への R2 Bucket
+  Lock、または別のバケットと鍵）は、API 側のホストごとの認証が揃ってから考える。
 - Terraform の state は prod と同じくローカル（`terraform/cloudflare/terraform.tfstate`）。
   Tunnel token とサービストークンの秘密を含むので、Git に入れず暗号化して保管する。
 
