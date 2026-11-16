@@ -1,0 +1,48 @@
+#!/bin/bash
+# Writes backup and WAL archiving metrics for node_exporter's textfile
+# collector. A missing marker means "never succeeded" and the metric is 0.
+# Usage: postgres-backup-metrics <pgdata> <pgbackrest state> <pg_dump state> <textfile dir>
+set -euo pipefail
+pgdata=$1
+pgbackrest_state=$2
+pgdump_state=$3
+directory=$4
+destination="$directory/postgres-backup.prom"
+
+mtime() { if [[ -f "$1" ]]; then stat -c %Y -- "$1"; else echo 0; fi; }
+
+archiver=$(runuser -u postgres -- psql -X -At -F ' ' -d postgres -c \
+  "SELECT coalesce(extract(epoch FROM last_archived_time), 0)::bigint, failed_count,
+          coalesce(extract(epoch FROM last_failed_time), 0)::bigint FROM pg_stat_archiver" 2>/dev/null || echo "")
+read -r archived failed_count failed_at <<<"${archiver:-0 0 0}"
+up=1; [[ -n "$archiver" ]] || up=0
+pending=$(find "$pgdata/pg_wal/archive_status" -maxdepth 1 -name '*.ready' 2>/dev/null | wc -l)
+
+temporary=$(mktemp "$directory/.postgres-backup.XXXXXXXX")
+trap 'rm -f -- "$temporary"' EXIT
+cat > "$temporary" <<METRICS
+# HELP postgres_backup_up Whether pg_stat_archiver could be read.
+# TYPE postgres_backup_up gauge
+postgres_backup_up $up
+# HELP pgbackrest_last_success_timestamp_seconds Time of the last successful pgBackRest backup by type.
+# TYPE pgbackrest_last_success_timestamp_seconds gauge
+pgbackrest_last_success_timestamp_seconds{type="full"} $(mtime "$pgbackrest_state/last-success-full")
+pgbackrest_last_success_timestamp_seconds{type="diff"} $(mtime "$pgbackrest_state/last-success-diff")
+# HELP pg_dump_last_success_timestamp_seconds Time of the last successful pg_dump upload.
+# TYPE pg_dump_last_success_timestamp_seconds gauge
+pg_dump_last_success_timestamp_seconds $(mtime "$pgdump_state/last-success")
+# HELP pg_archive_last_success_timestamp_seconds Time the last WAL segment was archived.
+# TYPE pg_archive_last_success_timestamp_seconds gauge
+pg_archive_last_success_timestamp_seconds $archived
+# HELP pg_archive_failed_total WAL archive failures since the statistics reset.
+# TYPE pg_archive_failed_total counter
+pg_archive_failed_total $failed_count
+# HELP pg_archive_last_failure_timestamp_seconds Time of the last WAL archive failure.
+# TYPE pg_archive_last_failure_timestamp_seconds gauge
+pg_archive_last_failure_timestamp_seconds $failed_at
+# HELP pg_archive_pending_segments WAL segments waiting to be archived (the WAL lag).
+# TYPE pg_archive_pending_segments gauge
+pg_archive_pending_segments $pending
+METRICS
+chmod 0644 "$temporary"
+mv -f -- "$temporary" "$destination"

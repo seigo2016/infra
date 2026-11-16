@@ -29,6 +29,53 @@ git 履歴と merged PR に残っているので、ここには載せない。
   復元時は `backup_timers_enabled=false` を明示し、復元完了後に有効化する。
 - 復元手順は [`standards/data-store-restore.md`](standards/data-store-restore.md)。
 
+## research-ops Control Plane（`research-ops-cp`）
+
+コードは揃ったが、まだ apply も playbook も流していない。
+手順は [`standards/research-ops-cp-restore.md`](standards/research-ops-cp-restore.md)。
+
+- **未検証の前提。** 初回の構築と復元の試験で確かめる。
+  - pgBackRest と R2 の組み合わせ（S3 互換、`repo1-s3-uri-style=path`、region `auto`）と、
+    読み取り専用の R2 鍵で `info`、`restore`、`archive-get` が通ること。
+    pgBackRest 2.60.0 の挙動（`--archive-mode=off` で復元したクラスタが WAL を送らない、
+    別のクラスタからの `stanza-create` と `archive-push` を拒む、`already exists` の文言、
+    `info` の JSON）は、手元の PostgreSQL 18 と posix の repository で確かめた。
+  - Bun の unit が、この hardening（`SystemCallFilter=@system-service`、
+    `ProtectSystem=strict` など）の下で動くか。
+    `systemd-analyze security research-ops-api` でも見る。
+  - `npm ci` で lockfile の Bun が入ること。Debian 13 の nodejs と npm で足りるか。
+  - Cloudflare provider 5.28.1 での plan。オフラインでは `terraform fmt` しか通していない。
+  - Proxmox の cloud-init が VM 名をホスト名にすること。復元の試験の隔離はこれに頼る。
+  - Cloudflare の API トークンの権限の名前（ダッシュボードの表記と合っているか）。
+  - Cloudflare の応答の打ち切り（約 100 秒）。long-poll は 60 秒以内で返す前提。
+- **Bridge のホストごとの認証は API 側でまだない。** 今の門は Access のサービス
+  トークンだけ。Bridge をつなぐ前に、Control Plane がホストごとの資格を発行して
+  取り消せるようにする。
+- **engine はまだ本物の runner を持たない。** 本番で dispatch させる仕事はまだない。
+- **Control Plane の epoch がスキーマにない。** 復元の dry-run は `lease_epoch` の
+  締め出しを数えるだけで、epoch は `NOT RUN` と出す。epoch と、Bridge の journal との
+  突き合わせのコマンドを research-ops 側に作り、復元の playbook から呼ぶ。
+- **監視は VM の中まで。** node_exporter（`127.0.0.1:9100`）はバックアップと WAL の
+  指標を出すが、Tunnel の経路も Worker もない。garage-monitor の Worker を 2 つ目の
+  対象に広げ、最後の backup と WAL の遅れの閾値で Discord に知らせる。
+- **秘密の投入のほかに、ホストで手で行う操作が 2 つ残る。** 初回の full backup の起動と、
+  復元の後の `/etc/research-ops-dispatch-suspended` の削除（突き合わせの後）。
+  必要なら playbook の明示的なフラグにする。
+- **復元の試験は手で始める。** 月 1 回の目安で、VM の作成から playbook までを
+  人が流す。別の物理ホストでの初回の試験も残っている。
+- **ダッシュボードの入口。** Access は今サービストークンだけを通す。PI がブラウザで
+  使う SPA ができたら、identity の policy を足す。
+- **既存への展開。** data-store は OS の baseline を inline で持ち、`host_baseline`
+  role を使っていない。data-store と hermes の VM も `standalone-vm` モジュールに
+  寄せられるが、state の移動（`moved`）が要るので今はしない。
+- **pg_dump の crypt の鍵。** rclone-backup のような、既存の鍵との不一致を検出する
+  仕組みはない。鍵を変えると古いダンプは新しい設定では読めない。
+- **バックアップは VM の鍵 1 本で消せる。** pgBackRest と pg_dump は同じバケットと同じ
+  読み書きの R2 鍵を使う。VM が乗っ取られた場合への備え（pg_dump の prefix への R2 Bucket
+  Lock、または別のバケットと鍵）は、API 側のホストごとの認証が揃ってから考える。
+- Terraform の state は prod と同じくローカル（`terraform/cloudflare/terraform.tfstate`）。
+  Tunnel token とサービストークンの秘密を含むので、Git に入れず暗号化して保管する。
+
 ## Proxmox の Terraform provider
 
 当面は Telmate を使う。3.0.2-rc10 への設定名の移行（`onboot` → `start_at_node_boot`、

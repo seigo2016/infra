@@ -1,0 +1,17 @@
+[{{ pg_dump_backup_r2_remote }}]
+type = s3
+provider = Cloudflare
+endpoint = {{ pg_dump_backup_r2_endpoint }}
+region = auto
+access_key_id = {{ pg_dump_backup_access_key_id }}
+secret_access_key = {{ pg_dump_backup_secret_access_key }}
+acl = private
+no_check_bucket = true
+
+[{{ pg_dump_backup_crypt_remote }}]
+type = crypt
+remote = {{ pg_dump_backup_r2_remote }}:{{ pg_dump_backup_bucket }}/{{ pg_dump_backup_prefix }}
+filename_encryption = standard
+directory_name_encryption = true
+password = {{ pg_dump_backup_crypt_password_obscured.stdout }}
+password2 = {{ pg_dump_backup_crypt_salt_obscured.stdout }}

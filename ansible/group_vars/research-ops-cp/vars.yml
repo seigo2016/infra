@@ -1,0 +1,49 @@
+---
+# Public, non-secret variables for the research-ops Control Plane.
+# Secrets live in vault.yml (ansible-vault encrypted; copy vault.yml.example).
+# ansible/vars/research-ops-cp-restore-test.yml loads this file too and then
+# overrides what must differ on the rehearsal VM.
+
+system_timezone: Asia/Tokyo
+
+# --- Application (research-ops control-plane) ---
+research_ops_user: research-ops
+research_ops_home: /opt/research-ops
+# Full commit SHA of the research-ops repository to deploy. The local clone is
+# $RESEARCH_OPS_REPO on the machine that runs Ansible.
+research_ops_git_version: ""
+research_ops_app_subdir: control-plane
+research_ops_api_port: 4100
+# Present after a restore; the engine (dispatch) stays down until it is removed.
+research_ops_dispatch_suspended_marker: /etc/research-ops-dispatch-suspended
+research_ops_api_enabled: true
+research_ops_engine_enabled: true
+
+# --- PostgreSQL ---
+postgresql_version: 18
+research_ops_db_name: research_ops
+research_ops_db_user: research_ops
+postgresql_databases:
+  - name: "{{ research_ops_db_name }}"
+    owner: "{{ research_ops_db_user }}"
+    password: "{{ vault_research_ops_db_password }}"
+research_ops_database_url: >-
+  postgres://{{ research_ops_db_user }}:{{ vault_research_ops_db_password }}@127.0.0.1:{{ postgresql_port | default(5432) }}/{{ research_ops_db_name }}
+
+# --- Backups (Cloudflare R2 bucket from terraform/cloudflare) ---
+research_ops_backup_bucket: research-ops-cp-backup
+pgbackrest_stanza: research-ops
+pgbackrest_repo_s3_bucket: "{{ research_ops_backup_bucket }}"
+pgbackrest_repo_path: /pgbackrest
+pgbackrest_retention_full: 4
+pgbackrest_archive_enabled: true
+pgbackrest_manifest_source_database: "{{ research_ops_db_name }}"
+postgresql_archive_enabled: "{{ pgbackrest_archive_enabled }}"
+postgresql_archive_command: "pgbackrest --stanza={{ pgbackrest_stanza }} archive-push %p"
+pg_dump_backup_database: "{{ research_ops_db_name }}"
+pg_dump_backup_bucket: "{{ research_ops_backup_bucket }}"
+# backup_timers_enabled is deliberately unset (null): timers stay as they are,
+# and new timers stay disabled until run with -e backup_timers_enabled=true.
+
+# --- Cloudflare Tunnel (token from `terraform -chdir=terraform/cloudflare output -raw tunnel_token`) ---
+cloudflared_tunnel_token: "{{ vault_research_ops_cloudflared_tunnel_token }}"

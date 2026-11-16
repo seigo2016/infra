@@ -76,3 +76,25 @@ variable "data_store_ip" {
   description = "IP address for the data-store (Garage S3) standalone VM"
   type        = string
 }
+
+variable "research_ops_cp_ip" {
+  description = "IP address for the research-ops Control Plane VM"
+  type        = string
+}
+
+variable "research_ops_cp_restore_test_enabled" {
+  description = "Create the disposable research-ops-cp restore rehearsal VM"
+  type        = bool
+  default     = false
+}
+
+variable "research_ops_cp_restore_test_ip" {
+  description = "IP address for the research-ops-cp restore rehearsal VM (required only when it is enabled)"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.research_ops_cp_restore_test_ip == null || var.research_ops_cp_restore_test_ip != var.research_ops_cp_ip
+    error_message = "research_ops_cp_restore_test_ip must differ from research_ops_cp_ip."
+  }
+}

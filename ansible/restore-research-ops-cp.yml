@@ -1,0 +1,84 @@
+---
+# Restores the production research-ops Control Plane database from R2
+# (pgBackRest), on the running VM or on a freshly rebuilt one. Stops the API,
+# the engine and the backup timers first, keeps archive_mode on so the new
+# timeline's history file and WAL reach the same repository, and suspends
+# dispatch: the engine stays down until the reconciliation with the
+# Bridge journals is done and the marker is removed. Then run
+# setup-research-ops-cp.yml. See docs/standards/research-ops-cp-restore.md.
+#
+#   .venv-ansible/bin/ansible-playbook -i ansible/inventory.research-ops-cp.yml \
+#     ansible/restore-research-ops-cp.yml --ask-vault-pass \
+#     -e research_ops_cp_confirm_restore=research-ops-cp
+# Optional: -e pgbackrest_restore_target_time='2026-11-20 03:00:00+09'
+- name: Restore the research-ops Control Plane database
+  hosts: research-ops-cp
+  remote_user: debian
+  become: true
+
+  vars:
+    # Skip stanza-create and check: before the restore this host may run a new
+    # empty cluster, which the repository rejects. archive_mode stays on, so the
+    # promoted timeline's history file and WAL are archived; WAL from that empty
+    # cluster is refused by archive-push (different system-id) and never lands.
+    pgbackrest_archive_enabled: false
+    postgresql_archive_enabled: true
+    pgbackrest_install_backup_units: false
+    postgresql_databases: []
+    pgbackrest_restore_archive_mode: preserve
+
+  pre_tasks:
+    - name: Require explicit confirmation
+      ansible.builtin.assert:
+        that:
+          - research_ops_cp_confirm_restore | default('') == 'research-ops-cp'
+          - ansible_facts['hostname'] == 'research-ops-cp'
+        fail_msg: >-
+          This overwrites the production database. Re-run with
+          -e research_ops_cp_confirm_restore=research-ops-cp on research-ops-cp.
+
+    - name: Suspend dispatch before anything else
+      ansible.builtin.copy:
+        dest: "{{ research_ops_dispatch_suspended_marker }}"
+        content: "restored {{ ansible_facts['date_time']['iso8601'] }}; remove after reconciliation\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Read the installed units
+      ansible.builtin.service_facts:
+
+    # A rebuilt VM has none of these yet; any that exists must stop, or a timer
+    # could start PostgreSQL or a backup in the middle of the restore.
+    - name: Stop the API, the engine and the backup timers
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - research-ops-engine.service
+        - research-ops-api.service
+        - pgbackrest-full.timer
+        - pgbackrest-diff.timer
+        - pg-dump-backup.timer
+        - postgres-backup-metrics.timer
+        - pgbackrest-full.service
+        - pgbackrest-diff.service
+        - pg-dump-backup.service
+      when: item in ansible_facts.services
+
+  roles:
+    - role: host_baseline
+    - role: postgresql
+    - role: pgbackrest
+    - role: pgbackrest_restore
+
+  post_tasks:
+    - name: Next steps
+      ansible.builtin.debug:
+        msg: >-
+          Restored. research-ops-api and research-ops-engine are stopped and
+          {{ research_ops_dispatch_suspended_marker }} keeps the engine down.
+          Run setup-research-ops-cp.yml with -e backup_timers_enabled=true
+          (restarts the API and the backup timers), take a full backup,
+          reconcile with the Bridge journals, then remove the marker and
+          start research-ops-engine.

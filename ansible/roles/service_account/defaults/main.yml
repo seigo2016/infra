@@ -1,0 +1,4 @@
+---
+# System account that owns an application's code and runs its services.
+# Required: service_account_name, service_account_home.
+service_account_group: "{{ service_account_name }}"

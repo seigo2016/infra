@@ -1,0 +1,173 @@
+---
+- name: Validate release arguments
+  ansible.builtin.assert:
+    that:
+      - research_ops_src_repo | length > 0
+      - research_ops_git_version is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      Export RESEARCH_OPS_REPO (a local clone of research-ops) and set
+      research_ops_git_version to a full commit SHA.
+
+- name: Resolve the pinned commit in the local clone
+  ansible.builtin.command:
+    argv: [git, -C, "{{ research_ops_src_repo }}", rev-parse, --verify, "{{ research_ops_git_version }}^{commit}"]
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+
+- name: Install Node.js and npm (installs the Bun version pinned by the app lockfile)
+  ansible.builtin.apt:
+    name: [nodejs, npm]
+    state: present
+
+- name: Check whether this release is already unpacked
+  ansible.builtin.stat:
+    path: "{{ research_ops_release_dir }}/package-lock.json"
+  register: research_ops_release_present
+
+- name: Unpack the release
+  when: not research_ops_release_present.stat.exists
+  block:
+    - name: Create a local archive of the pinned commit
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .tar.gz
+      delegate_to: localhost
+      become: false
+      register: research_ops_release_archive
+
+    - name: Archive the application directory at the pinned commit
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ research_ops_src_repo }}"
+          - archive
+          - --format=tar.gz
+          - "--output={{ research_ops_release_archive.path }}"
+          - "{{ research_ops_git_version }}:{{ research_ops_app_subdir }}"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+
+    - name: Create the release directory
+      ansible.builtin.file:
+        path: "{{ research_ops_release_dir }}"
+        state: directory
+        owner: "{{ research_ops_user }}"
+        group: "{{ research_ops_user }}"
+        mode: "0750"
+
+    - name: Copy and extract the release
+      ansible.builtin.unarchive:
+        src: "{{ research_ops_release_archive.path }}"
+        dest: "{{ research_ops_release_dir }}"
+        owner: "{{ research_ops_user }}"
+        group: "{{ research_ops_user }}"
+
+  always:
+    - name: Remove the local archive
+      ansible.builtin.file:
+        path: "{{ research_ops_release_archive.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+      when: research_ops_release_archive.path is defined
+
+- name: Install dependencies from the lockfile
+  ansible.builtin.command:
+    argv: [npm, ci, --no-audit, --no-fund]
+    chdir: "{{ research_ops_release_dir }}"
+    creates: "{{ research_ops_release_dir }}/node_modules/.bin/bun"
+  become: true
+  become_user: "{{ research_ops_user }}"
+  environment:
+    HOME: "{{ research_ops_home }}"
+
+- name: Report the Bun version of this release
+  ansible.builtin.command:
+    argv: ["{{ research_ops_release_dir }}/node_modules/.bin/bun", --version]
+  become: true
+  become_user: "{{ research_ops_user }}"
+  register: research_ops_bun_version
+  changed_when: false
+  check_mode: false
+  failed_when: research_ops_bun_version.rc != 0 and not ansible_check_mode
+
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: "{{ research_ops_config_dir }}"
+    state: directory
+    owner: root
+    group: "{{ research_ops_user }}"
+    mode: "0750"
+
+- name: Render the database environment file
+  ansible.builtin.template:
+    src: database.env.j2
+    dest: "{{ research_ops_env_file }}"
+    owner: root
+    group: "{{ research_ops_user }}"
+    mode: "0640"
+  no_log: true
+  register: research_ops_env
+
+- name: Read where current points
+  ansible.builtin.stat:
+    path: "{{ research_ops_current_dir }}"
+  register: research_ops_current
+
+- name: Decide whether this run switches releases
+  ansible.builtin.set_fact:
+    research_ops_switching: "{{ research_ops_current.stat.lnk_source | default('') != research_ops_release_dir }}"
+
+- name: Read the installed units
+  ansible.builtin.service_facts:
+  when: research_ops_switching | bool
+
+# Migrate before current moves: if the migration fails, current still points
+# at the old release and a rerun retries the same steps.
+- name: Stop the services before migrating a new release
+  ansible.builtin.systemd_service:
+    name: "{{ item }}.service"
+    state: stopped
+  loop: "{{ research_ops_units }}"
+  when:
+    - research_ops_switching | bool
+    - (item ~ '.service') in ansible_facts.services
+    - not ansible_check_mode
+
+- name: Apply database migrations
+  ansible.builtin.command:
+    # DATABASE_URL is read from the env file on the VM, so the task output
+    # holds no secret and stays visible on failure.
+    argv:
+      - /bin/sh
+      - -c
+      - 'set -a; . "$1"; set +a; exec "$2" packages/db/src/migrate.ts'
+      - migrate
+      - "{{ research_ops_env_file }}"
+      - "{{ research_ops_release_dir }}/node_modules/.bin/bun"
+    chdir: "{{ research_ops_release_dir }}"
+  become: true
+  become_user: "{{ research_ops_user }}"
+  environment:
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0"
+  register: research_ops_migrate
+  changed_when: research_ops_migrate.stdout | trim not in ['[]', '']
+  when: not ansible_check_mode
+
+- name: Point current at this release
+  ansible.builtin.file:
+    src: "{{ research_ops_release_dir }}"
+    dest: "{{ research_ops_current_dir }}"
+    state: link
+    owner: "{{ research_ops_user }}"
+    group: "{{ research_ops_user }}"
+    force: true
+  register: research_ops_current_link
+
+- name: Remember whether the services must restart
+  ansible.builtin.set_fact:
+    research_ops_release_changed: "{{ research_ops_switching | bool or research_ops_env is changed }}"

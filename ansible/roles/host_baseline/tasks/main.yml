@@ -1,0 +1,49 @@
+---
+- name: Read current timezone
+  ansible.builtin.command: timedatectl show -p Timezone --value
+  register: host_baseline_timezone
+  changed_when: false
+  check_mode: false
+
+- name: Set system timezone
+  ansible.builtin.command: "timedatectl set-timezone {{ system_timezone }}"
+  when: host_baseline_timezone.stdout != system_timezone
+
+- name: Ensure systemd-timesyncd (NTP) is enabled
+  ansible.builtin.systemd_service:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+
+- name: Install unattended-upgrades
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+    update_cache: true
+
+- name: Enable automatic security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+- name: Install common base packages
+  ansible.builtin.apt:
+    name: "{{ host_baseline_packages }}"
+    state: present
+
+- name: Check QEMU guest agent device
+  ansible.builtin.stat:
+    path: /dev/virtio-ports/org.qemu.guest_agent.0
+  register: host_baseline_qga_port
+
+- name: Start QEMU guest agent when available
+  ansible.builtin.systemd_service:
+    name: qemu-guest-agent
+    state: started
+  when: host_baseline_qga_port.stat.exists and not ansible_check_mode

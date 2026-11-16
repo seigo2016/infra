@@ -1,0 +1,25 @@
+# Managed by Ansible (role pgbackrest). Contains repository credentials.
+[global]
+repo1-type=s3
+repo1-s3-endpoint={{ pgbackrest_repo_s3_endpoint }}
+repo1-s3-bucket={{ pgbackrest_repo_s3_bucket }}
+repo1-s3-region={{ pgbackrest_repo_s3_region }}
+repo1-s3-uri-style=path
+repo1-s3-key={{ pgbackrest_s3_key }}
+repo1-s3-key-secret={{ pgbackrest_s3_key_secret }}
+repo1-path={{ pgbackrest_repo_path }}
+repo1-cipher-type=aes-256-cbc
+repo1-cipher-pass={{ pgbackrest_cipher_pass }}
+repo1-retention-full-type=count
+repo1-retention-full={{ pgbackrest_retention_full }}
+repo1-bundle=y
+repo1-block=y
+compress-type=zst
+process-max={{ pgbackrest_process_max }}
+start-fast=y
+log-level-console=info
+log-level-file=detail
+
+[{{ pgbackrest_stanza }}]
+pg1-path={{ postgresql_data_dir }}
+pg1-port={{ postgresql_port }}

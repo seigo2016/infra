@@ -1,0 +1,65 @@
+[Unit]
+Description={{ bun_service_description }}
+{% for t in bun_service_after %}
+After={{ t }}
+{% endfor %}
+Wants=network-online.target
+{% for t in bun_service_requires %}
+Requires={{ t }}
+{% endfor %}
+{% if bun_service_skip_if_exists %}
+ConditionPathExists=!{{ bun_service_skip_if_exists }}
+{% endif %}
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User={{ bun_service_user }}
+Group={{ bun_service_user }}
+WorkingDirectory={{ bun_service_workdir }}
+Environment=NODE_ENV=production
+# No runtime transpiler cache: the code directory is read-only to the unit.
+Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+{% for k, v in bun_service_environment | dictsort %}
+Environment={{ k }}={{ v }}
+{% endfor %}
+{% for f in bun_service_environment_files %}
+EnvironmentFile={{ f }}
+{% endfor %}
+ExecStart={{ bun_service_bun }} {{ bun_service_entrypoint }}
+Restart=on-failure
+RestartSec=5
+{% if bun_service_state_directory %}
+StateDirectory={{ bun_service_state_directory }}
+StateDirectoryMode=0700
+{% endif %}
+UMask=0077
+
+# --- Hardening (same baseline as uv_python_service's python-mcp-server) ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# MemoryDenyWriteExecute is deliberately absent: Bun's JavaScriptCore JIT
+# needs writable and executable pages.
+
+[Install]
+WantedBy=multi-user.target

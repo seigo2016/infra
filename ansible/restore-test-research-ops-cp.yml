@@ -1,0 +1,74 @@
+---
+# Restore rehearsal on the isolated research-ops-cp-restore-test VM: restore
+# the latest pgBackRest backup from R2, start PostgreSQL, compare schema and
+# row counts with the manifest taken before the backup, and dry-run the
+# reconciliation. No Tunnel, no API or engine (so nothing can dispatch), no
+# backups, read-only R2 key, archive_mode=off. Disposable VM: create it with
+# TF_VAR_research_ops_cp_restore_test_enabled=true.
+#
+#   .venv-ansible/bin/ansible-playbook -i ansible/inventory.research-ops-cp.yml \
+#     ansible/restore-test-research-ops-cp.yml --ask-vault-pass
+- name: Rehearse a research-ops Control Plane restore in isolation
+  hosts: research-ops-cp-restore-test
+  remote_user: debian
+  become: true
+
+  vars_files:
+    - group_vars/research-ops-cp/vars.yml
+    - group_vars/research-ops-cp/vault.yml
+    - vars/research-ops-cp-restore-test.yml
+
+  pre_tasks:
+    - name: Check for an existing Cloudflare connector
+      ansible.builtin.stat:
+        path: /etc/systemd/system/cloudflared.service
+      register: restore_cloudflared_unit
+
+    - name: Check for Control Plane services
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}.service"
+      loop: [research-ops-api, research-ops-engine]
+      register: restore_app_units
+
+    - name: Refuse hosts with Cloudflare Tunnel installed
+      ansible.builtin.assert:
+        that:
+          - not restore_cloudflared_unit.stat.exists
+        fail_msg: This playbook requires a separate VM without the production Tunnel.
+
+    - name: Refuse hosts with the API or engine installed
+      ansible.builtin.assert:
+        that:
+          - restore_app_units.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: The rehearsal VM must not run the API or the engine (no dispatch).
+
+    - name: Require the rehearsal VM
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['hostname'] == 'research-ops-cp-restore-test'
+          - ansible_host != lookup('env', 'TF_VAR_research_ops_cp_ip')
+        fail_msg: >-
+          Run only on the research-ops-cp-restore-test VM (cloud-init hostname
+          from Terraform), at an address other than the production VM.
+
+    - name: Require isolation settings
+      ansible.builtin.assert:
+        that:
+          - not (pgbackrest_archive_enabled | bool)
+          - not (postgresql_archive_enabled | bool)
+          - not (pgbackrest_install_backup_units | bool)
+          - not (backup_timers_enabled | bool)
+          - pgbackrest_restore_archive_mode == 'off'
+          - pgbackrest_s3_key == vault_pgbackrest_restore_s3_key
+          - vault_pgbackrest_restore_s3_key != vault_pgbackrest_s3_key
+        fail_msg: >-
+          Keep WAL archiving, stanza changes and backup units off, restore with
+          archive_mode=off and use the read-only R2 key (a different key from
+          the production read-write one).
+      no_log: true
+
+  roles:
+    - role: host_baseline
+    - role: postgresql
+    - role: pgbackrest
+    - role: pgbackrest_restore

@@ -36,6 +36,9 @@ $K get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" taints="}{.spec.ta
 | [`standards/k8s-cert-renewal.md`](standards/k8s-cert-renewal.md) | kubeadm 証明書の期限切れとクラスタ全断からの復旧 |
 | [`standards/data-store-restore.md`](standards/data-store-restore.md) | Garage と R2 からの復元 |
 | [`standards/data-store-debian-upgrade.md`](standards/data-store-debian-upgrade.md) | data-store の Debian 更新時の確認事項 |
+| [`standards/research-ops-cp-restore.md`](standards/research-ops-cp-restore.md) | research-ops Control Plane の構築、バックアップ、復元の試験と本番の復元 |
+| [`standards/port-allocation-research-ops-cp.md`](standards/port-allocation-research-ops-cp.md) | research-ops-cp VM のポート |
+| [`clients/research-ops-bridge-client-setup.md`](clients/research-ops-bridge-client-setup.md) | Bridge から Cloudflare Access 経由で Control Plane に届く設定 |
 
 ## よく使う確認コマンド
 

@@ -1,0 +1,7 @@
+---
+# Localhost-only node_exporter plus a textfile collector for the PostgreSQL
+# backups (same shape as garage-monitor). Pulling these metrics from the
+# existing Worker is a follow-up (docs/known-issues.md).
+postgres_backup_monitor_listen: 127.0.0.1:9100
+postgres_backup_monitor_textfile_dir: /var/lib/prometheus/node-exporter
+postgres_backup_monitor_units_regex: '(postgresql@.+|research-ops-.+|cloudflared|pgbackrest-.+|pg-dump-backup)\.service'
