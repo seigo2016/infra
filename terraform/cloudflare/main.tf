@@ -89,6 +89,19 @@ resource "cloudflare_zero_trust_access_policy" "research_ops_clients" {
   ]
 }
 
+# People open the research-ops pages in a browser through the account's existing Google login
+# (research_ops_access_idp_id). Only the addresses in research_ops_people_emails pass; they come
+# from .env, never from this public repo.
+resource "cloudflare_zero_trust_access_policy" "research_ops_people" {
+  count = nonsensitive(length(var.research_ops_people_emails)) > 0 ? 1 : 0
+
+  account_id = var.cloudflare_account_id
+  name       = "research-ops people"
+  decision   = "allow"
+
+  include = [for email in var.research_ops_people_emails : { email = { email = email } }]
+}
+
 resource "cloudflare_zero_trust_access_application" "research_ops" {
   account_id = var.cloudflare_account_id
   name       = "research-ops"
@@ -106,13 +119,13 @@ resource "cloudflare_zero_trust_access_application" "research_ops" {
   service_auth_401_redirect = true
   app_launcher_visible      = false
   session_duration          = "24h"
+  allowed_idps              = [var.research_ops_access_idp_id]
+  auto_redirect_to_identity = true
 
-  policies = [
-    {
-      id         = cloudflare_zero_trust_access_policy.research_ops_clients.id
-      precedence = 1
-    },
-  ]
+  policies = concat(
+    [{ id = cloudflare_zero_trust_access_policy.research_ops_clients.id, precedence = 1 }],
+    [for p in cloudflare_zero_trust_access_policy.research_ops_people : { id = p.id, precedence = 2 }],
+  )
 }
 
 resource "cloudflare_r2_bucket" "research_ops_backup" {

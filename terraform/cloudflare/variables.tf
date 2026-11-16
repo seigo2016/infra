@@ -60,3 +60,15 @@ variable "research_ops_backup_bucket_location" {
   type        = string
   default     = "apac"
 }
+
+variable "research_ops_people_emails" {
+  description = "People allowed to open research-ops in a browser (through the Google login). Set TF_VAR_research_ops_people_emails in .env; never commit addresses to this public repo."
+  type        = list(string)
+  default     = []
+  sensitive   = true
+}
+
+variable "research_ops_access_idp_id" {
+  description = "ID of the account's existing Google identity provider in Zero Trust (Settings > Authentication). Created outside this module."
+  type        = string
+}
