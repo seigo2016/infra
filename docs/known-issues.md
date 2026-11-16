@@ -40,8 +40,10 @@ git 履歴と merged PR に残っているので、ここには載せない。
   アプリの port がすべて loopback であること。Tunnel 越しに、トークンなしは Access が 401、
   サービストークン `bridge-1` は API まで届いて認証が通ること（JWT の `common_name` が
   Terraform の `client_id` と合い、`EnvironmentFile` の `CP_ACCESS_ACTORS` の JSON も読めている）。
-- **未検証の前提。** 復元の試験で確かめる。
-  - 読み取り専用の R2 鍵で `info`、`restore`、`archive-get` が通ること。
+- **最初の復元の試験（2026-11-16）。** 読み取り専用の R2 鍵で、最初の full から隔離した VM に
+  戻し、`archive_mode=off`、manifest との照合、dry-run（epoch は 1 のまま）まで通った。
+  ただし DB はまだほぼ空なので、行数の照合は中身のある状態で改めて確かめる。
+- **未検証の前提。**
   - Cloudflare の応答の打ち切り（約 100 秒）。long-poll は 60 秒以内で返す前提。
   - `systemd-analyze security research-ops-api` の点はまだ見ていない。
 - **構築で見つかった直す候補。**
