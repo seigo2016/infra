@@ -4,7 +4,7 @@
     that:
       - research_ops_src_repo | length > 0
       - research_ops_git_version is match('^[0-9a-f]{40}$')
-      - research_ops_access_team_domain is match('^https://[a-z0-9-]+\.cloudflareaccess\.com$')
+      - research_ops_access_team_domain is match('^https://[a-z0-9-]+[.]cloudflareaccess[.]com$')
       - research_ops_access_aud | length > 0
       - research_ops_access_actors | length > 0
     fail_msg: >-

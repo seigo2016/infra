@@ -55,7 +55,9 @@ Proxmox がない別のマシンでも、Debian 13 のホストに inventory を
 5. `.env` に `TF_VAR_research_ops_cp_ip` を入れる（入れるまで prod の plan は通らない）。
 6. `group_vars/research-ops-cp/vars.yml` の `research_ops_git_version` に、配る
    research-ops の commit SHA を書き、`.env` か shell で `RESEARCH_OPS_REPO` に
-   research-ops のローカルの clone を指す。
+   research-ops のローカルの clone を指す。commit は、API が Access のトークンを検証する版
+   （`control-plane/apps/api/src/access.ts` がある版）以降にする。それより前の版は
+   `CP_ACCESS_*` を読まず、呼び手の名乗りをそのまま信じる。
 
 vault の全項目と Cloudflare / R2 のトークンは KeePassXC にも保存する。復元に要るのは
 このリポジトリ、vault のパスワード、R2 の鍵、pgBackRest の cipher pass だけ。
