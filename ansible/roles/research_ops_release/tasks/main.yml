@@ -113,6 +113,51 @@
   no_log: true
   register: research_ops_env
 
+- name: Read where current points
+  ansible.builtin.stat:
+    path: "{{ research_ops_current_dir }}"
+  register: research_ops_current
+
+- name: Decide whether this run switches releases
+  ansible.builtin.set_fact:
+    research_ops_switching: "{{ research_ops_current.stat.lnk_source | default('') != research_ops_release_dir }}"
+
+- name: Read the installed units
+  ansible.builtin.service_facts:
+  when: research_ops_switching | bool
+
+# Migrate before current moves: if the migration fails, current still points
+# at the old release and a rerun retries the same steps.
+- name: Stop the services before migrating a new release
+  ansible.builtin.systemd_service:
+    name: "{{ item }}.service"
+    state: stopped
+  loop: "{{ research_ops_units }}"
+  when:
+    - research_ops_switching | bool
+    - (item ~ '.service') in ansible_facts.services
+    - not ansible_check_mode
+
+- name: Apply database migrations
+  ansible.builtin.command:
+    # DATABASE_URL is read from the env file on the VM, so the task output
+    # holds no secret and stays visible on failure.
+    argv:
+      - /bin/sh
+      - -c
+      - 'set -a; . "$1"; set +a; exec "$2" packages/db/src/migrate.ts'
+      - migrate
+      - "{{ research_ops_env_file }}"
+      - "{{ research_ops_release_dir }}/node_modules/.bin/bun"
+    chdir: "{{ research_ops_release_dir }}"
+  become: true
+  become_user: "{{ research_ops_user }}"
+  environment:
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0"
+  register: research_ops_migrate
+  changed_when: research_ops_migrate.stdout | trim not in ['[]', '']
+  when: not ansible_check_mode
+
 - name: Point current at this release
   ansible.builtin.file:
     src: "{{ research_ops_release_dir }}"
@@ -125,32 +170,4 @@
 
 - name: Remember whether the services must restart
   ansible.builtin.set_fact:
-    research_ops_release_changed: "{{ research_ops_current_link is changed or research_ops_env is changed }}"
-
-- name: Stop the services before migrating a new release
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    state: stopped
-  loop: "{{ research_ops_units }}"
-  failed_when: false
-  when: research_ops_current_link is changed and not ansible_check_mode
-
-- name: Apply database migrations
-  ansible.builtin.command:
-    # DATABASE_URL is read from the env file on the VM, so the task output
-    # holds no secret and stays visible on failure.
-    argv:
-      - /bin/sh
-      - -c
-      - 'set -a; . "$1"; set +a; exec "$2" packages/db/src/migrate.ts'
-      - migrate
-      - "{{ research_ops_env_file }}"
-      - "{{ research_ops_current_dir }}/node_modules/.bin/bun"
-    chdir: "{{ research_ops_current_dir }}"
-  become: true
-  become_user: "{{ research_ops_user }}"
-  environment:
-    BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0"
-  register: research_ops_migrate
-  changed_when: research_ops_migrate.stdout | trim not in ['[]', '']
-  when: not ansible_check_mode
+    research_ops_release_changed: "{{ research_ops_switching | bool or research_ops_env is changed }}"
