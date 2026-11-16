@@ -26,6 +26,7 @@
     pgbackrest_install_backup_units: false
     postgresql_databases: []
     pgbackrest_restore_archive_mode: preserve
+    pgbackrest_restore_raise_epoch: true
 
   pre_tasks:
     - name: Require explicit confirmation
