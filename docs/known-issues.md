@@ -7,6 +7,8 @@ git 履歴と merged PR に残っているので、ここには載せない。
 
 ## Garage の復元と監視
 
+- 2026-11-08 と 11-15 の週次 backup が `immutable file modified` で失敗した。R2 の写しの 1 件が 7 月から途中で切れていた（全件の大きさの棚卸しでこの 1 件だけ）。2026-11-17 に壊れた写しを `trash/2026-11-17/` に移し、手で流した backup が成功した（02:55、R2 の写しは元と同じ大きさ）。経緯とあるべき形は `plans/2026-11-17-garage-backup-to-be.md`。
+
 - 2026-11-04 の復元試験で見つかった rclone crypt パスワードの不一致は Vault を
   修正済み。正しい R2 と crypt の設定は KeePassXC に添付済みだが、以前 Vault から
   転記したパスワードのメモは更新が必要。Ansible は既存 crypt キーとの不一致を
