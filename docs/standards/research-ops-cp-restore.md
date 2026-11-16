@@ -34,7 +34,8 @@ Proxmox がない別のマシンでも、Debian 13 のホストに inventory を
 ## 初回に手で行うこと（秘密の投入だけ）
 
 1. **Cloudflare の API トークン**を作り、`.env` に `TF_VAR_cloudflare_api_token`、
-   `TF_VAR_cloudflare_account_id`、`TF_VAR_cloudflare_zone_id` を入れる。権限:
+   `TF_VAR_cloudflare_account_id`、`TF_VAR_cloudflare_zone_id`、`TF_VAR_cloudflare_team_name`
+   （Zero Trust のチーム名。cloudflared が Access のトークンを確かめるのに使う）を入れる。権限:
    - Account: Cloudflare Tunnel Edit、Access: Apps and Policies Edit、
      Access: Service Tokens Edit、Workers R2 Storage Edit
    - Zone（対象のゾーンだけ）: DNS Edit

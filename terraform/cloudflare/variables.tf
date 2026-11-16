@@ -19,6 +19,11 @@ variable "cloudflare_zone_id" {
   sensitive   = true
 }
 
+variable "cloudflare_team_name" {
+  description = "Zero Trust team name (the <team> in <team>.cloudflareaccess.com). Set via TF_VAR_cloudflare_team_name."
+  type        = string
+}
+
 variable "research_ops_hostname" {
   description = "Public hostname of the research-ops Control Plane"
   type        = string

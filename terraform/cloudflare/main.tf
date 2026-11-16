@@ -33,6 +33,15 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "research_ops" {
       {
         hostname = var.research_ops_hostname
         service  = var.research_ops_origin_service
+        # cloudflared itself refuses requests without a valid Access token, so
+        # traffic stays closed even if the Access application is removed.
+        origin_request = {
+          access = {
+            required  = true
+            team_name = var.cloudflare_team_name
+            aud_tag   = [cloudflare_zero_trust_access_application.research_ops.aud]
+          }
+        }
       },
       {
         service = "http_status:404"

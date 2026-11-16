@@ -46,6 +46,7 @@ export TF_VAR_research_ops_cp_ip="192.168.1.120"
 export TF_VAR_cloudflare_api_token="..."   # terraform/cloudflare 用
 export TF_VAR_cloudflare_account_id="..."
 export TF_VAR_cloudflare_zone_id="..."
+export TF_VAR_cloudflare_team_name="..."
 ```
 
 手順は [`docs/standards/research-ops-cp-restore.md`](docs/standards/research-ops-cp-restore.md)。
