@@ -31,28 +31,27 @@ git 履歴と merged PR に残っているので、ここには載せない。
 
 ## research-ops Control Plane（`research-ops-cp`）
 
-コードは揃ったが、まだ apply も playbook も流していない。
+2026-11-16 に初回の構築を済ませた（`terraform/cloudflare` と prod の apply、構築の playbook、最初の full）。
 手順は [`standards/research-ops-cp-restore.md`](standards/research-ops-cp-restore.md)。
 
-- **未検証の前提。** 初回の構築と復元の試験で確かめる。
-  - pgBackRest と R2 の組み合わせ（S3 互換、`repo1-s3-uri-style=path`、region `auto`）と、
-    読み取り専用の R2 鍵で `info`、`restore`、`archive-get` が通ること。
-    pgBackRest 2.60.0 の挙動（`--archive-mode=off` で復元したクラスタが WAL を送らない、
-    別のクラスタからの `stanza-create` と `archive-push` を拒む、`already exists` の文言、
-    `info` の JSON）は、手元の PostgreSQL 18 と posix の repository で確かめた。
-  - Bun の unit が、この hardening（`SystemCallFilter=@system-service`、
-    `ProtectSystem=strict` など）の下で動くか。
-    `systemd-analyze security research-ops-api` でも見る。
-  - `npm ci` で lockfile の Bun が入ること。Debian 13 の nodejs と npm で足りるか。
-  - Cloudflare provider 5.28.1 での plan。オフラインでは `terraform fmt` しか通していない。
-  - Proxmox の cloud-init が VM 名をホスト名にすること。復元の試験の隔離はこれに頼る。
-  - Cloudflare の API トークンの権限の名前（ダッシュボードの表記と合っているか）。
+- **初回の構築で確かめたこと。** Cloudflare provider 5.28.1 の apply と API トークンの権限、
+  cloud-init が VM 名をホスト名にすること、`npm ci` で lockfile の Bun が入ること、
+  hardening の下で API と engine が動くこと、pgBackRest と R2（読み書きの鍵）の `check` と full、
+  アプリの port がすべて loopback であること。Tunnel 越しに、トークンなしは Access が 401、
+  サービストークン `bridge-1` は API まで届いて認証が通ること（JWT の `common_name` が
+  Terraform の `client_id` と合い、`EnvironmentFile` の `CP_ACCESS_ACTORS` の JSON も読めている）。
+- **未検証の前提。** 復元の試験で確かめる。
+  - 読み取り専用の R2 鍵で `info`、`restore`、`archive-get` が通ること。
   - Cloudflare の応答の打ち切り（約 100 秒）。long-poll は 60 秒以内で返す前提。
-  - サービストークンで通った要求の Access の JWT が、client ID を `common_name` に、
-    Terraform の `client_id` と同じ形（`.access` で終わる）で持つこと。違えば API は
-    すべての呼び手を 403 で断る（閉じた側に倒れる）。最初の Bridge の接続で確かめる。
-  - systemd の `EnvironmentFile` が、単一引用符で囲んだ `CP_ACCESS_ACTORS` の JSON を
-    そのまま読むこと（`sh` では確かめた）。
+  - `systemd-analyze security research-ops-api` の点はまだ見ていない。
+- **構築で見つかった直す候補。**
+  - Bun を入れるためだけに Debian の nodejs と npm（依存を含め約 600 パッケージ）を入れていて、
+    ZFS の上では十数分かかる。Bun のバイナリを checksum つきで入れる形にする。
+  - PGDG の署名の鍵を実行のたびに `www.postgresql.org` から取っていて、IPv6 の待ちで
+    時間切れになることがある。鍵を role に入れて fingerprint を固定する。
+  - cloudflared の token が `service install` の引数に載り、vault の token を変えても
+    install が飛ばされて反映されない（初回は vault の値の誤りに気づけなかった）。
+  - systemd-resolved の LLMNR（5355）が全アドレスで待ち受けている。
 - **呼び手の認証は Access のサービストークン 1 本。** API は Access のトークンを検証し、
   サービストークンの client ID から端末を決める（一覧は `vault_research_ops_access`）。
   端末の追加と取り消しは `research_ops_access_clients` を変えて apply し、vault を入れ直す。
@@ -63,7 +62,7 @@ git 履歴と merged PR に残っているので、ここには載せない。
 - **監視は VM の中まで。** node_exporter（`127.0.0.1:9100`）はバックアップと WAL の
   指標を出すが、Tunnel の経路も Worker もない。garage-monitor の Worker を 2 つ目の
   対象に広げ、最後の backup と WAL の遅れの閾値で Discord に知らせる。
-- **秘密の投入のほかに、ホストで手で行う操作が 2 つ残る。** 初回の full backup の起動と、
+- **秘密の投入のほかに、ホストで手で行う操作が残る。** 初回の full backup の起動（2026-11-16 に実施）と、
   復元の後の `/etc/research-ops-dispatch-suspended` の削除（突き合わせの後）。
   必要なら playbook の明示的なフラグにする。
 - **復元の試験は手で始める。** 月 1 回の目安で、VM の作成から playbook までを
