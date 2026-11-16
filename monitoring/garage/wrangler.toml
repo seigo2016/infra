@@ -5,6 +5,8 @@ workers_dev = false
 
 [vars]
 METRICS_URL = "https://garage-monitor.seigo2016.com/metrics"
+# Second target: the research-ops Control Plane VM (terraform/cloudflare, output monitor_access).
+CP_METRICS_URL = "https://research-ops-metrics.seigo2016.com/metrics"
 
 [[d1_databases]]
 binding = "DB"

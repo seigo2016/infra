@@ -29,6 +29,11 @@ variable "research_ops_hostname" {
   type        = string
 }
 
+variable "research_ops_metrics_hostname" {
+  description = "Hostname the external monitor reads the VM's metrics from"
+  type        = string
+}
+
 variable "research_ops_origin_service" {
   description = "Origin the Tunnel forwards to, on the Control Plane VM's loopback"
   type        = string

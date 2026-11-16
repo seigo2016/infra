@@ -44,4 +44,25 @@ token の発行結果には秘密が含まれる。表示された値を安全�
 
 実行ログと Worker のエラーも定期的に確認する。D1 や Worker 自体が動かない場合、この Worker は自身の障害を Discord に通知できない。成功した R2 同期が復元可能性を保証するわけではなく、別途復元試験が必要。
 
+## research-ops-cp（2 つ目の監視先）
+
+同じ Worker が research-ops の Control Plane の VM も 5 分ごとに読む（`research_ops_cp.mjs`）。ホスト名、Access のアプリとサービストークン、Tunnel のルートは `terraform/cloudflare` が持ち、トークンは API には入れない。D1 の行は `cp_` を前に付けて Garage と分け、通知は「research-ops-cp 監視」と名乗る。`CP_METRICS_URL` がなければこの監視先は飛ばす。
+
+| 条件 | 通知する状態 |
+|---|---|
+| `cp_backup` | pgBackRest の full と diff の新しいほうから 30 時間（diff は月〜土、full は日曜の 02:30） |
+| `cp_pg_dump` | 7 日半（日曜 04:30） |
+| `cp_wal` | 送れずに溜まった WAL が 3 個以上、または最後の失敗が最後の成功より新しい。何も書かれない間は送り出しの時刻が進まないので、時刻の古さでは判定しない |
+| `cp_services` | postgresql、API、engine、cloudflared が active でない。backup の oneshot は failed のときだけ |
+| `cp_metrics` | 収集の失敗、または `postgres-backup.prom` が 20 分以上更新されない（収集の timer が止まった） |
+| `cp_capacity` | 空き 15% 未満 |
+
+secret の入れ方（値は画面に出さない）:
+
+```sh
+cd terraform/cloudflare
+terraform output -json monitor_access | jq -r .client_id     | (cd ../../monitoring/garage && npx wrangler secret put CP_ACCESS_CLIENT_ID)
+terraform output -json monitor_access | jq -r .client_secret | (cd ../../monitoring/garage && npx wrangler secret put CP_ACCESS_CLIENT_SECRET)
+```
+
 ローカル検証: `node --test monitoring/garage/*.test.mjs`。Cloudflare の設定値や secret はこのリポジトリに保存しない。

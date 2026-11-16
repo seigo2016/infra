@@ -42,3 +42,13 @@ output "backup_bucket" {
   description = "R2 bucket for the Control Plane backups"
   value       = cloudflare_r2_bucket.research_ops_backup.name
 }
+
+output "monitor_access" {
+  description = "Worker secrets for the external monitor (monitoring/garage): CP_ACCESS_CLIENT_ID and CP_ACCESS_CLIENT_SECRET"
+  value = {
+    client_id     = cloudflare_zero_trust_access_service_token.research_ops_monitor.client_id
+    client_secret = cloudflare_zero_trust_access_service_token.research_ops_monitor.client_secret
+    expires_at    = cloudflare_zero_trust_access_service_token.research_ops_monitor.expires_at
+  }
+  sensitive = true
+}

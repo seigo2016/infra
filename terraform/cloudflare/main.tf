@@ -1,7 +1,7 @@
 # Cloudflare edge for the research-ops Control Plane only: a remotely managed
-# Tunnel with one HTTP route to the API on the VM's loopback, its DNS record,
-# an Access application that admits only the listed service tokens, and the R2
-# bucket that holds the backups. Existing services are not managed here.
+# Tunnel with two HTTP routes on the VM's loopback (the API, and the metrics for
+# the external monitor), their DNS records, an Access application per route,
+# and the R2 bucket that holds the backups. Existing services are not managed here.
 #
 # Access is the outer gate. It does not replace the per-host Bridge credential
 # that the Control Plane API issues and revokes itself.
@@ -26,7 +26,10 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "research_ops" {
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.research_ops.id
 
   # Route traffic only once Access guards the hostname.
-  depends_on = [cloudflare_zero_trust_access_application.research_ops]
+  depends_on = [
+    cloudflare_zero_trust_access_application.research_ops,
+    cloudflare_zero_trust_access_application.research_ops_metrics,
+  ]
 
   config = {
     ingress = [
@@ -40,6 +43,19 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "research_ops" {
             required  = true
             team_name = var.cloudflare_team_name
             aud_tag   = [cloudflare_zero_trust_access_application.research_ops.aud]
+          }
+        }
+      },
+      {
+        # Backup and service metrics (node_exporter on the VM's loopback) for the
+        # external monitor Worker in monitoring/garage.
+        hostname = var.research_ops_metrics_hostname
+        service  = "http://127.0.0.1:9100"
+        origin_request = {
+          access = {
+            required  = true
+            team_name = var.cloudflare_team_name
+            aud_tag   = [cloudflare_zero_trust_access_application.research_ops_metrics.aud]
           }
         }
       },
@@ -113,6 +129,49 @@ resource "cloudflare_zero_trust_access_application" "research_ops" {
     # module, e.g. the Google login of the owner). The API still admits only emails in its actor list.
     [for id in compact([var.research_ops_people_policy_id]) : { id = id, precedence = 2 }],
   )
+}
+
+# The external monitor reads the VM's metrics through its own hostname, Access
+# application and service token, so that token cannot reach the API.
+resource "cloudflare_dns_record" "research_ops_metrics" {
+  zone_id = var.cloudflare_zone_id
+  name    = var.research_ops_metrics_hostname
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.research_ops.id}.cfargotunnel.com"
+  proxied = true
+  ttl     = 1
+  comment = "research-ops Control Plane metrics for the monitor Worker. Managed by terraform/cloudflare."
+
+  depends_on = [cloudflare_zero_trust_access_application.research_ops_metrics]
+}
+
+resource "cloudflare_zero_trust_access_service_token" "research_ops_monitor" {
+  account_id = var.cloudflare_account_id
+  name       = "research-ops-monitor"
+  duration   = var.research_ops_service_token_duration
+}
+
+resource "cloudflare_zero_trust_access_policy" "research_ops_monitor" {
+  account_id = var.cloudflare_account_id
+  name       = "research-ops monitor"
+  decision   = "non_identity"
+
+  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.research_ops_monitor.id } }]
+}
+
+resource "cloudflare_zero_trust_access_application" "research_ops_metrics" {
+  account_id = var.cloudflare_account_id
+  name       = "research-ops metrics"
+  type       = "self_hosted"
+  domain     = var.research_ops_metrics_hostname
+
+  destinations = [{ type = "public", uri = var.research_ops_metrics_hostname }]
+
+  service_auth_401_redirect = true
+  app_launcher_visible      = false
+  session_duration          = "24h"
+
+  policies = [{ id = cloudflare_zero_trust_access_policy.research_ops_monitor.id, precedence = 1 }]
 }
 
 resource "cloudflare_r2_bucket" "research_ops_backup" {
