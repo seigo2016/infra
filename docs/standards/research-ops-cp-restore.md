@@ -141,12 +141,17 @@ cd terraform/prod && terraform apply && cd ../..        # VM がなければ作�
   -e research_ops_cp_confirm_restore=research-ops-cp
 # 時点を指定するとき: -e "pgbackrest_restore_target_time='2026-11-20 03:00:00+09'"
 .venv-ansible/bin/ansible-playbook -i ansible/inventory.research-ops-cp.yml \
-  ansible/setup-research-ops-cp.yml --ask-vault-pass
+  ansible/setup-research-ops-cp.yml --ask-vault-pass -e backup_timers_enabled=true
+ssh -J ss debian@"$TF_VAR_research_ops_cp_ip" 'sudo systemctl start pgbackrest-full.service'
 ```
 
-復元の playbook は、最初に `/etc/research-ops-dispatch-suspended` を置いてから API と engine を止め、
-WAL のアーカイブを止めたまま復元と照合と dry-run を行う。構築の playbook がアーカイブと
-API を戻す。engine はこの印がある間は起動しない（unit の `ConditionPathExists`）。
+復元の playbook は、最初に `/etc/research-ops-dispatch-suspended` を置いてから、API、engine、
+backup の timer を止め、復元と照合と dry-run を行う。`archive_mode` は on のままにする。
+off のまま promote すると、新しい timeline の `.history` と直後の WAL が repository に送られず、
+次の復元で時点の指定が効かなくなる。復元の前に新しい VM の空のクラスタが送る WAL は、
+system-id が違うので pgBackRest が拒む。構築の playbook は API と backup の timer を戻す
+（`-e backup_timers_enabled=true` がないと timer は無効のまま）。engine はこの印がある間は
+起動しない（unit の `ConditionPathExists`）。
 
 RFC §9 の残りは Control Plane 側で行う。epoch を上げ、各 Bridge の journal を問い合わせ、
 古い attempt を締め出して突き合わせる。終わったら dispatch を再開する。
@@ -156,7 +161,7 @@ ssh -J ss debian@"$TF_VAR_research_ops_cp_ip" \
   'sudo rm /etc/research-ops-dispatch-suspended && sudo systemctl start research-ops-engine'
 ```
 
-復元の後は新しい timeline の WAL が同じ repository に送られる。復元の直後に full を 1 回取る。
+復元の後は新しい timeline の WAL が同じ repository に送られる。上の手順の最後で full を 1 回取っておく。
 
 ## 限界
 

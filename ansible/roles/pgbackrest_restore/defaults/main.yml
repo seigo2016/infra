@@ -6,7 +6,8 @@
 
 # "off" writes archive_mode=off into the restored cluster, so it can never
 # push WAL into the repository. The rehearsal must use "off"; a production
-# restore keeps the configured archive_mode ("preserve").
+# restore keeps the configured archive_mode ("preserve"), which must be on so
+# the new timeline is archived.
 pgbackrest_restore_archive_mode: preserve
 
 # Optional point-in-time target, e.g. "2026-11-20 03:00:00+09". Empty restores

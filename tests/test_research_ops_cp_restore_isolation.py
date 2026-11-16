@@ -119,7 +119,7 @@ class RoleGuardTests(unittest.TestCase):
         tasks = load(ROLES / 'pgbackrest_restore/tasks/main.yml')
         self.assertIn("'--archive-mode=' ~ pgbackrest_restore_archive_mode",
                       task(tasks, 'Restore the stanza')['ansible.builtin.command']['argv'])
-        check = task(tasks, 'Require archiving off on a rehearsal')['ansible.builtin.assert']['that']
+        check = task(tasks, 'Require archiving off on a rehearsal and on otherwise')['ansible.builtin.assert']['that']
         self.assertIn("pgbackrest_restore_archive_mode != 'off' or pgbackrest_restore_archive_mode_now.stdout == 'off'", check)
 
     def test_reconciliation_is_rolled_back(self):
@@ -148,10 +148,28 @@ class ProductionGuardTests(unittest.TestCase):
         play = load(PROD_RESTORE)[0]
         names = [t['name'] for t in play['pre_tasks']]
         self.assertEqual(names[0], 'Require explicit confirmation')
-        self.assertLess(names.index('Suspend dispatch before anything else'), names.index('Stop the API and engine'))
+        stop = 'Stop the API, the engine and the backup timers'
+        self.assertLess(names.index('Suspend dispatch before anything else'), names.index(stop))
         self.assertIn("research_ops_cp_confirm_restore | default('') == 'research-ops-cp'",
                       asserts(play, 'Require explicit confirmation'))
         self.assertIs(play['vars']['pgbackrest_archive_enabled'], False)
+        stopped = next(t for t in play['pre_tasks'] if t['name'] == stop)
+        self.assertNotIn('failed_when', stopped)
+        for unit in ('pgbackrest-full.timer', 'pgbackrest-diff.timer', 'pg-dump-backup.timer'):
+            self.assertIn(unit, stopped['loop'])
+
+    def test_production_restore_keeps_archiving_so_the_new_timeline_is_kept(self):
+        play = load(PROD_RESTORE)[0]
+        self.assertIs(play['vars']['postgresql_archive_enabled'], True)
+        self.assertEqual(play['vars']['pgbackrest_restore_archive_mode'], 'preserve')
+        check = task(load(ROLES / 'pgbackrest_restore/tasks/main.yml'),
+                     'Require archiving off on a rehearsal and on otherwise')['ansible.builtin.assert']['that']
+        self.assertIn("pgbackrest_restore_archive_mode != 'preserve' or pgbackrest_restore_archive_mode_now.stdout == 'on'", check)
+
+    def test_rebuild_procedure_turns_the_backup_timers_on(self):
+        doc = (ROOT / 'docs/standards/research-ops-cp-restore.md').read_text()
+        section = doc[doc.index('## 本番を復元する、作り直す'):doc.index('## 限界')]
+        self.assertIn('setup-research-ops-cp.yml --ask-vault-pass -e backup_timers_enabled=true', section)
 
     def test_rehearsal_vm_is_opt_in_and_not_started_with_the_node(self):
         tf = (ROOT / 'terraform/prod/research-ops-cp.tf').read_text()

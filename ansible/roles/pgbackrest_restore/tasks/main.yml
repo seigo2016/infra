@@ -67,11 +67,14 @@
   register: pgbackrest_restore_archive_mode_now
   changed_when: false
 
-- name: Require archiving off on a rehearsal
+- name: Require archiving off on a rehearsal and on otherwise
   ansible.builtin.assert:
     that:
       - pgbackrest_restore_archive_mode != 'off' or pgbackrest_restore_archive_mode_now.stdout == 'off'
-    fail_msg: The restored cluster archives WAL although the rehearsal asked for archive_mode=off.
+      - pgbackrest_restore_archive_mode != 'preserve' or pgbackrest_restore_archive_mode_now.stdout == 'on'
+    fail_msg: >-
+      archive_mode is {{ pgbackrest_restore_archive_mode_now.stdout }}: a rehearsal must not archive,
+      and a production restore must, or the new timeline never reaches the repository.
 
 - name: Read the last manifest recorded before the backup
   ansible.builtin.command:
