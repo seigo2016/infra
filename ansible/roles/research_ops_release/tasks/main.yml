@@ -20,10 +20,33 @@
   changed_when: false
   check_mode: false
 
-- name: Install Node.js and npm (installs the Bun version pinned by the app lockfile)
+- name: Install unzip (unpacks the Bun release)
   ansible.builtin.apt:
-    name: [nodejs, npm]
+    name: unzip
     state: present
+
+- name: Download the pinned Bun release (checksum verified)
+  ansible.builtin.get_url:
+    url: "https://github.com/oven-sh/bun/releases/download/bun-v{{ research_ops_bun_version }}/bun-linux-x64.zip"
+    dest: "/var/cache/bun-{{ research_ops_bun_version }}-linux-x64.zip"
+    checksum: "sha256:{{ research_ops_bun_sha256 }}"
+    mode: "0644"
+
+- name: Create the Bun directory
+  ansible.builtin.file:
+    path: "{{ research_ops_bun_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Unpack Bun
+  ansible.builtin.unarchive:
+    src: "/var/cache/bun-{{ research_ops_bun_version }}-linux-x64.zip"
+    dest: "{{ research_ops_bun_dir }}"
+    remote_src: true
+    extra_opts: [-j]
+    creates: "{{ research_ops_bun }}"
 
 - name: Check whether this release is already unpacked
   ansible.builtin.stat:
@@ -79,25 +102,29 @@
       become: false
       when: research_ops_release_archive.path is defined
 
-- name: Install dependencies from the lockfile
+- name: Read the Bun version the release pins
+  ansible.builtin.slurp:
+    src: "{{ research_ops_release_dir }}/package.json"
+  register: research_ops_package_json
+
+- name: Require the installed Bun to be the one the release pins
+  ansible.builtin.assert:
+    that:
+      - (research_ops_package_json.content | b64decode | from_json).devDependencies.bun == research_ops_bun_version
+    fail_msg: >-
+      The release pins Bun {{ (research_ops_package_json.content | b64decode | from_json).devDependencies.bun }};
+      set research_ops_bun_version and research_ops_bun_sha256 to match.
+
+# Runtime dependencies only, exactly as package-lock.json resolves them.
+- name: Install the runtime dependencies from the lockfile
   ansible.builtin.command:
-    argv: [npm, ci, --no-audit, --no-fund]
+    argv: ["{{ research_ops_bun }}", install, --frozen-lockfile, --production]
     chdir: "{{ research_ops_release_dir }}"
-    creates: "{{ research_ops_release_dir }}/node_modules/.bin/bun"
+    creates: "{{ research_ops_release_dir }}/node_modules/elysia"
   become: true
   become_user: "{{ research_ops_user }}"
   environment:
     HOME: "{{ research_ops_home }}"
-
-- name: Report the Bun version of this release
-  ansible.builtin.command:
-    argv: ["{{ research_ops_release_dir }}/node_modules/.bin/bun", --version]
-  become: true
-  become_user: "{{ research_ops_user }}"
-  register: research_ops_bun_version
-  changed_when: false
-  check_mode: false
-  failed_when: research_ops_bun_version.rc != 0 and not ansible_check_mode
 
 - name: Create the configuration directory
   ansible.builtin.file:
@@ -152,7 +179,7 @@
       - 'set -a; . "$1"; set +a; exec "$2" packages/db/src/migrate.ts'
       - migrate
       - "{{ research_ops_env_file }}"
-      - "{{ research_ops_release_dir }}/node_modules/.bin/bun"
+      - "{{ research_ops_bun }}"
     chdir: "{{ research_ops_release_dir }}"
   become: true
   become_user: "{{ research_ops_user }}"

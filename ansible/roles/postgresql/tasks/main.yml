@@ -17,6 +17,20 @@
     state: present
     update_cache: true
 
+- name: Create the apt keyring directory
+  ansible.builtin.file:
+    path: "{{ postgresql_pgdg_key_path | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Install the PGDG signing key
+  ansible.builtin.copy:
+    src: pgdg.asc
+    dest: "{{ postgresql_pgdg_key_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Add the PGDG apt repository
   ansible.builtin.deb822_repository:
     name: pgdg
@@ -24,7 +38,7 @@
     uris: "{{ postgresql_pgdg_uri }}"
     suites: "{{ ansible_facts['distribution_release'] }}-pgdg"
     components: main
-    signed_by: "{{ postgresql_pgdg_key_url }}"
+    signed_by: "{{ postgresql_pgdg_key_path }}"
   register: postgresql_pgdg_repo
 
 - name: Install PostgreSQL {{ postgresql_version }}

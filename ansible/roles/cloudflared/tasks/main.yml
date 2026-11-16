@@ -28,18 +28,37 @@
     state: present
     update_cache: yes
 
-- name: Check whether cloudflared service is already installed
-  ansible.builtin.stat:
-    path: /etc/systemd/system/cloudflared.service
-  register: cloudflared_service_stat
+- name: Create the cloudflared configuration directory
+  ansible.builtin.file:
+    path: "{{ cloudflared_token_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
 
-- name: Install cloudflared as systemd service with tunnel token
-  ansible.builtin.command: cloudflared service install {{ cloudflared_tunnel_token }}
-  when: not cloudflared_service_stat.stat.exists
+# A changed token in the vault reaches the running tunnel on the next run.
+- name: Write the tunnel token
+  ansible.builtin.copy:
+    dest: "{{ cloudflared_token_file }}"
+    content: "TUNNEL_TOKEN={{ cloudflared_tunnel_token }}\n"
+    owner: root
+    group: root
+    mode: "0600"
   no_log: true
+  notify: Restart cloudflared
+
+- name: Install the cloudflared unit
+  ansible.builtin.template:
+    src: cloudflared.service.j2
+    dest: /etc/systemd/system/cloudflared.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart cloudflared
 
 - name: Ensure cloudflared is enabled and started
   ansible.builtin.systemd_service:
     name: cloudflared
     enabled: yes
     state: started
+    daemon_reload: true

@@ -1,15 +1,13 @@
 ---
-# One long-running Bun process as a hardened systemd unit. The Bun binary is
-# the one the application's lockfile installed (node_modules/.bin/bun), so the
-# application repository pins the runtime version.
+# One long-running Bun process as a hardened systemd unit.
 #
 # Required:
 #   bun_service_name        unit name without .service
 #   bun_service_user        account that runs it (see the service_account role)
 #   bun_service_workdir     application directory (contains node_modules)
 #   bun_service_entrypoint  script path relative to the workdir
+#   bun_service_bun         path of the Bun binary
 bun_service_description: "{{ bun_service_name }} (Bun)"
-bun_service_bun: "{{ bun_service_workdir }}/node_modules/.bin/bun"
 bun_service_environment: {}      # non-secret Environment= entries
 bun_service_environment_files: [] # secret values (root-owned, group-readable)
 bun_service_state_directory: ""  # StateDirectory= name under /var/lib, optional

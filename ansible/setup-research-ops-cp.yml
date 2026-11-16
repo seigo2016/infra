@@ -41,6 +41,7 @@
         bun_service_user: "{{ research_ops_user }}"
         bun_service_workdir: "{{ research_ops_current_dir }}"
         bun_service_entrypoint: apps/api/src/main.ts
+        bun_service_bun: "{{ research_ops_bun }}"
         bun_service_environment:
           CP_PORT: "{{ research_ops_api_port }}"
         bun_service_environment_files: ["{{ research_ops_env_file }}"]
@@ -55,6 +56,7 @@
         bun_service_user: "{{ research_ops_user }}"
         bun_service_workdir: "{{ research_ops_current_dir }}"
         bun_service_entrypoint: apps/engine/src/main.ts
+        bun_service_bun: "{{ research_ops_bun }}"
         bun_service_environment:
           CP_ENGINE_ID: research-ops-cp
           CP_RUNNER_DIR: /var/lib/research-ops-engine

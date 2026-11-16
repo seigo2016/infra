@@ -47,3 +47,22 @@
     name: qemu-guest-agent
     state: started
   when: host_baseline_qga_port.stat.exists and not ansible_check_mode
+
+# systemd-resolved answers LLMNR on every address by default (port 5355).
+# Nothing here resolves names that way, so close it.
+- name: Create the systemd-resolved drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Turn off LLMNR and multicast DNS
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/10-no-llmnr.conf
+    content: |
+      # Managed by Ansible (role host_baseline).
+      [Resolve]
+      LLMNR=no
+      MulticastDNS=no
+    mode: "0644"
+  notify: Restart systemd-resolved
