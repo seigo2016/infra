@@ -11,7 +11,7 @@ research_ops_user: research-ops
 research_ops_home: /opt/research-ops
 # Full commit SHA of the research-ops repository to deploy. The local clone is
 # $RESEARCH_OPS_REPO on the machine that runs Ansible.
-research_ops_git_version: "328d3382670061a361d12245bbb663226cb1a4df"
+research_ops_git_version: "20ccd222c0315afffc29ce2459190064eb5e1b29"
 research_ops_app_subdir: control-plane
 research_ops_api_port: 4100
 # Present after a restore; the engine (dispatch) stays down until it is removed.
