@@ -20,6 +20,7 @@ pg_dump_last_success_timestamp_seconds ${now - 2 * 86400}
 pgbackrest_last_success_timestamp_seconds{type="diff"} 0
 pgbackrest_last_success_timestamp_seconds{type="full"} ${now - 20 * 3600}
 postgres_backup_up 1
+research_ops_runner_last_report_timestamp_seconds{host="bridge-1"} ${now - 120}
 ${['cloudflared', 'postgresql@18-main', 'research-ops-api', 'research-ops-engine'].map(u =>
   `node_systemd_unit_state{name="${u}.service",state="active",type="simple"} 1\nnode_systemd_unit_state{name="${u}.service",state="failed",type="simple"} 0`).join('\n')}
 ${['pg-dump-backup', 'pgbackrest-diff', 'pgbackrest-full'].map(u =>
@@ -76,4 +77,8 @@ test('both targets keep separate rows and labels; Garage rows stay unprefixed', 
   assert.ok(rows.has('reachability') && rows.has('cp_wal') && rows.has('cp_reachability'));
   assert.ok(!rows.has('metrics'), 'an unreachable Garage only records reachability');
   assert.deepEqual(posts.sort(), ['⚠️ Garage 監視: 監視先に到達できません（VM、回線、Tunnel または認証を確認）', '⚠️ research-ops-cp 監視: WAL が 9 個送れずに溜まっている'].sort());
+});
+test('a Bridge silent for more than 15 minutes, or no Bridge metric at all, is reported', () => {
+  assert.match(evaluate(metrics.replace(`host="bridge-1"} ${now - 120}`, `host="bridge-1"} ${now - 17 * 3600}`), now).bridge, /bridge-1 1020 分/);
+  assert.match(evaluate(metrics.replace(/research_ops_runner.*\n/, ''), now).bridge, /未確認/);
 });

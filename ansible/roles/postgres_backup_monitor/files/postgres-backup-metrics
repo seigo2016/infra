@@ -1,12 +1,14 @@
 #!/bin/bash
 # Writes backup and WAL archiving metrics for node_exporter's textfile
 # collector. A missing marker means "never succeeded" and the metric is 0.
-# Usage: postgres-backup-metrics <pgdata> <pgbackrest state> <pg_dump state> <textfile dir>
+# Usage: postgres-backup-metrics <pgdata> <pgbackrest state> <pg_dump state> <textfile dir> [research-ops db]
+# With the research-ops database named, also writes when each runner host (Bridge) last reported.
 set -euo pipefail
 pgdata=$1
 pgbackrest_state=$2
 pgdump_state=$3
 directory=$4
+research_db=${5:-}
 destination="$directory/postgres-backup.prom"
 
 mtime() { if [[ -f "$1" ]]; then stat -c %Y -- "$1"; else echo 0; fi; }
@@ -17,6 +19,12 @@ archiver=$(runuser -u postgres -- psql -X -At -F ' ' -d postgres -c \
 read -r archived failed_count failed_at <<<"${archiver:-0 0 0}"
 up=1; [[ -n "$archiver" ]] || up=0
 pending=$(find "$pgdata/pg_wal/archive_status" -maxdepth 1 -name '*.ready' 2>/dev/null | wc -l)
+
+runners=""
+if [[ -n "$research_db" ]]; then
+  runners=$(runuser -u postgres -- psql -X -At -F ' ' -d "$research_db" -c \
+    "SELECT id, coalesce(extract(epoch FROM last_report_at), 0)::bigint FROM runner_hosts ORDER BY id" 2>/dev/null || echo "")
+fi
 
 temporary=$(mktemp "$directory/.postgres-backup.XXXXXXXX")
 trap 'rm -f -- "$temporary"' EXIT
@@ -44,5 +52,14 @@ pg_archive_last_failure_timestamp_seconds $failed_at
 # TYPE pg_archive_pending_segments gauge
 pg_archive_pending_segments $pending
 METRICS
+if [[ -n "$research_db" ]]; then
+  {
+    echo "# HELP research_ops_runner_last_report_timestamp_seconds Time each runner host (Bridge) last reported to the Control Plane."
+    echo "# TYPE research_ops_runner_last_report_timestamp_seconds gauge"
+    while read -r host at; do
+      [[ "$host" =~ ^[A-Za-z0-9_.-]+$ ]] && echo "research_ops_runner_last_report_timestamp_seconds{host=\"$host\"} $at"
+    done <<<"$runners"
+  } >> "$temporary"
+fi
 chmod 0644 "$temporary"
 mv -f -- "$temporary" "$destination"

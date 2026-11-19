@@ -5,11 +5,12 @@ const MAX_PGBACKREST_AGE = 30 * 3600;     // newest of full and diff; the diff r
 const MAX_PG_DUMP_AGE = 7.5 * 86400;
 const MAX_TEXTFILE_AGE = 20 * 60;         // the collector's own file, so a dead timer is caught
 const MAX_PENDING_WAL = 3;
+const MAX_RUNNER_SILENCE = 15 * 60;   // a Bridge reports every 5 minutes; the screen also calls 15 minutes stale
 const LONG_RUNNING = ['postgresql@18-main.service', 'research-ops-api.service', 'research-ops-engine.service', 'cloudflared.service'];
 const ONESHOT = ['pgbackrest-full.service', 'pgbackrest-diff.service', 'pg-dump-backup.service'];
 const TEXTFILE = '/var/lib/prometheus/node-exporter/postgres-backup.prom';
 
-export const CONDITIONS = ['metrics', 'capacity', 'services', 'backup', 'pg_dump', 'wal'];
+export const CONDITIONS = ['metrics', 'capacity', 'services', 'backup', 'pg_dump', 'wal', 'bridge'];
 
 function parse(text) {
   const out = [];
@@ -75,5 +76,15 @@ export function evaluate(text, now) {
   if (pending === null || lastOk === null || lastFail === null) alarms.wal = 'WAL の送り出しが未確認';
   else if (pending >= MAX_PENDING_WAL) alarms.wal = `WAL が ${pending} 個送れずに溜まっている`;
   else if (lastFail > lastOk) alarms.wal = 'WAL の送り出しが失敗している';
+
+  // A Bridge that stops reporting leaves the pages silently out of date (2026-11-19: WSL's user
+  // systemd was OOM-killed and the Bridge stayed down 17 hours with nobody told).
+  const runners = all.filter(s => s.name === 'research_ops_runner_last_report_timestamp_seconds');
+  if (!runners.length) alarms.bridge = 'Bridge の報告時刻が未確認';
+  else {
+    const silent = runners.filter(s => now - s.value > MAX_RUNNER_SILENCE)
+      .map(s => `${s.labels.host} ${s.value > 0 ? `${Math.floor((now - s.value) / 60)} 分` : '報告なし'}`);
+    if (silent.length) alarms.bridge = `Bridge の報告が途絶えている（${silent.join('、')}）`;
+  }
   return alarms;
 }

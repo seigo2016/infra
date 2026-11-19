@@ -3,4 +3,4 @@ Description=Publish PostgreSQL backup and WAL archiving metrics
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/postgres-backup-metrics {{ postgresql_data_dir }} {{ pgbackrest_state_dir }} {{ pg_dump_backup_state_dir }} {{ postgres_backup_monitor_textfile_dir }}
+ExecStart=/usr/local/sbin/postgres-backup-metrics {{ postgresql_data_dir }} {{ pgbackrest_state_dir }} {{ pg_dump_backup_state_dir }} {{ postgres_backup_monitor_textfile_dir }} {{ research_ops_db_name | default('') }}
