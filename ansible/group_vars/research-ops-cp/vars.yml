@@ -53,4 +53,4 @@ pg_dump_backup_bucket: "{{ research_ops_backup_bucket }}"
 cloudflared_tunnel_token: "{{ vault_research_ops_cloudflared_tunnel_token }}"
 
 # Bridges only report observations (the API refuses them anything else).
-research_ops_access_observe_only: ["bridge-1"]
+research_ops_access_observe_only: ["bridge-1", "bridge-mac"]
