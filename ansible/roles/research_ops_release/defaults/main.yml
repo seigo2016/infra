@@ -27,6 +27,7 @@ research_ops_database_url: ""   # secret; built in group_vars from the vault
 research_ops_access_team_domain: ""   # https://<team>.cloudflareaccess.com
 research_ops_access_aud: ""           # Access application audience tag
 research_ops_access_actors: {}        # service token client ID -> actor id
+research_ops_access_observe_only: []  # actor ids that may only report observations (Bridges)
 
 # Units stopped while a new release is migrated.
 research_ops_units: [research-ops-api, research-ops-engine]
