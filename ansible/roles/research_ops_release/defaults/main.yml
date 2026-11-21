@@ -28,6 +28,9 @@ research_ops_access_team_domain: ""   # https://<team>.cloudflareaccess.com
 research_ops_access_aud: ""           # Access application audience tag
 research_ops_access_actors: {}        # service token client ID -> actor id
 research_ops_access_observe_only: []  # actor ids that may only report observations (Bridges)
+# PI-approved host operations (research-ops control-plane README, "PI の操作").
+research_ops_operation_runners: {}     # Bridge actor id -> hosts it runs approved operations on
+research_ops_totp_secret: ""           # base32 TOTP secret the PI keeps in KeePassXC; empty: nothing can be approved
 
 # Units stopped while a new release is migrated.
 research_ops_units: [research-ops-api, research-ops-engine]
