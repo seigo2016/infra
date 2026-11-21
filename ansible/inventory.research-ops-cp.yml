@@ -2,12 +2,16 @@
 # comes from the environment (.env), so the same inventory works on another
 # Proxmox host:
 #   TF_VAR_research_ops_cp_ip, TF_VAR_research_ops_cp_restore_test_ip
-#   SSH_PRIVATE_KEY_PATH (default ~/.ssh/id_ed25519_k8s)
+#   RESEARCH_OPS_CP_SSH_KEY (default ~/.ssh/id_ed25519_research_ops_cp; has a passphrase,
+#     load it into ssh-agent first, with a lifetime: ssh-add -t 15m. Not the k8s key, which
+#     agents can use. The restore rehearsal VM is built with the k8s key and lives briefly:
+#     run its playbook with RESEARCH_OPS_CP_SSH_KEY=~/.ssh/id_ed25519_k8s)
 #   ANSIBLE_JUMP_HOST    (default ss; set to "none" to connect directly)
 all:
   vars:
     ansible_user: debian
-    ansible_ssh_private_key_file: "{{ lookup('env', 'SSH_PRIVATE_KEY_PATH') | default('~/.ssh/id_ed25519_k8s', true) }}"
+    ansible_ssh_private_key_file: "{{ lookup('env', 'RESEARCH_OPS_CP_SSH_KEY') | default('~/.ssh/id_ed25519_research_ops_cp', true) }}"
+    research_ops_cp_ssh_public_key: "{{ lookup('env', 'RESEARCH_OPS_CP_SSH_PUBLIC_KEY') | default('~/.ssh/id_ed25519_research_ops_cp.pub', true) }}"
     research_ops_jump_host: "{{ lookup('env', 'ANSIBLE_JUMP_HOST') | default('ss', true) }}"
     ansible_ssh_common_args: >-
       {{ '' if research_ops_jump_host == 'none' else '-o ProxyJump=' ~ research_ops_jump_host }}

@@ -23,6 +23,7 @@
         fail_msg: >-
           This host reports hostname {{ ansible_facts['hostname'] }}; the
           production playbook only runs on research-ops-cp.
+      tags: [always]
 
   roles:
     - role: host_baseline
@@ -83,3 +84,16 @@
           research-ops-engine does not start. Remove it after reconciliation
           (docs/standards/research-ops-cp-restore.md).
       when: research_ops_dispatch_marker.stat.exists
+
+    # Only the research-ops key, which has a passphrase, may log in (PI 2026-11-21). The k8s key
+    # is passphrase-less and also opens the other VMs, so agents on WSL could reach this one's DB
+    # and bypass the TOTP on host operations. The first run after the switch connects with the old
+    # key: RESEARCH_OPS_CP_SSH_KEY=~/.ssh/id_ed25519_k8s ... --tags ssh_key
+    - name: Let only the research-ops key log in as debian
+      ansible.builtin.copy:
+        dest: /home/debian/.ssh/authorized_keys
+        content: "{{ lookup('file', research_ops_cp_ssh_public_key) }}\n"
+        owner: debian
+        group: debian
+        mode: "0600"
+      tags: [ssh_key]
