@@ -35,3 +35,6 @@ vault_pgbackrest_restore_s3_key_secret: "REPLACE_ME_R2_SECRET_KEY_READ_ONLY"
 vault_pgbackrest_cipher_pass: "REPLACE_ME_HIGH_ENTROPY"
 vault_pg_dump_crypt_password: "REPLACE_ME_HIGH_ENTROPY"
 vault_pg_dump_crypt_salt: "REPLACE_ME_HIGH_ENTROPY"
+
+# TOTP secret for approving host operations (base32; the PI creates it in KeePassXC).
+vault_research_ops_totp_secret: "<base32 secret from KeePassXC>"
