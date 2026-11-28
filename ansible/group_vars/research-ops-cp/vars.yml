@@ -11,7 +11,7 @@ research_ops_user: research-ops
 research_ops_home: /opt/research-ops
 # Full commit SHA of the research-ops repository to deploy. The local clone is
 # $RESEARCH_OPS_REPO on the machine that runs Ansible.
-research_ops_git_version: "4bcd8c7a46376850b551f08f723f35adf39ffa8b"
+research_ops_git_version: "ede344424f46b6f617ab429bcbfb3bee322c31b6"
 research_ops_app_subdir: control-plane
 research_ops_api_port: 4100
 # Present after a restore; the engine (dispatch) stays down until it is removed.
@@ -61,6 +61,8 @@ cloudflared_tunnel_token: "{{ vault_research_ops_cloudflared_tunnel_token }}"
 
 # Bridges only report observations (the API refuses them anything else).
 research_ops_access_observe_only: ["bridge-1", "bridge-mac"]
+# Exact observation-to-project bindings; set checkout roots in the private inventory only.
+research_ops_overview_project_roots: "{{ vault_research_ops_overview_project_roots | default([]) }}"
 # bridge-1 (WSL) runs the PI-approved operations on WSL and, over ssh, on lab. Mac is not listed.
 research_ops_operation_runners: {"bridge-1": ["wsl", "lab"]}
 # The PI creates this in KeePassXC and adds it to the vault; agents never generate or read it.
