@@ -25,6 +25,20 @@
           production playbook only runs on research-ops-cp.
       tags: [always]
 
+    - name: Derive overview bindings from the controller's installed Bridge
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/files/research_ops_overview_roots.py"
+          - "{{ research_ops_overview_local_bridge }}"
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      changed_when: false
+      no_log: true
+      register: research_ops_overview_discovery
+      when: (research_ops_overview_local_bridge | default('') | length) > 0
+
   roles:
     - role: host_baseline
     - role: service_account
@@ -35,6 +49,8 @@
     - role: pgbackrest
     - role: pg_dump_backup
     - role: research_ops_release
+      vars:
+        research_ops_overview_project_roots: "{{ (research_ops_overview_discovery.stdout | default('[]')) | from_json }}"
     - role: bun_service
       vars:
         bun_service_name: research-ops-api

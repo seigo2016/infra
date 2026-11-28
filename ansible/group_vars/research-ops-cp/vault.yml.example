@@ -38,9 +38,3 @@ vault_pg_dump_crypt_salt: "REPLACE_ME_HIGH_ENTROPY"
 
 # TOTP secret for approving host operations (base32; the PI creates it in KeePassXC).
 vault_research_ops_totp_secret: "<base32 secret from KeePassXC>"
-
-# Optional exact observation bindings. Each host is a Bridge actor, not an SSH host.
-# vault_research_ops_overview_project_roots:
-#   - host: "bridge-example"
-#     root: "/path/to/checkout"
-#     project_id: "00000000-0000-4000-8000-000000000001"
